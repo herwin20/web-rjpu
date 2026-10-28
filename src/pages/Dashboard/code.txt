@@ -1,0 +1,742 @@
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
+import {
+  FiArchive,
+  FiLogOut,
+  FiUser,
+  FiDatabase,
+  FiUsers,
+  FiZap,
+  FiHome,
+  FiCalendar,
+  FiActivity,
+  FiBell,
+  FiChevronLeft,
+  FiChevronRight,
+  FiAlertCircle,
+  FiX,
+  FiMenu,
+  FiRefreshCw,
+  FiShield,
+  FiLock,
+} from "react-icons/fi";
+
+import ProgramData from "./ProgramData";
+import UserManagement from "./UserManagement";
+import DashboardHome from "./DashboardHome";
+import DropData from "./DropDataPage";
+import MappingData from "./MappingDataPage";
+import DisbursementData from "./PerencanaanPage";
+import NotificationPanel from "../components/NotificationPanel";
+import {
+  MENU_ITEMS,
+  BADGE_MAX_DISPLAY,
+  SIDEBAR_WIDTH_OPEN,
+  SIDEBAR_WIDTH_CLOSED,
+} from "./constants";
+import {
+  useStatistics,
+  useNotifications,
+  useSidebarAutoCollapse,
+  useClickOutside,
+  useBodyScrollLock,
+} from "./hooks";
+
+const ICONS = {
+  home: FiHome,
+  calendar: FiCalendar,
+  database: FiDatabase,
+  archive: FiArchive,
+  activity: FiActivity,
+  users: FiUsers,
+};
+
+const focusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2";
+
+function Avatar({ name, className = "" }) {
+  const initials =
+    String(name || "User")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || "")
+      .join("") || "U";
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white font-bold shadow-sm ${className}`}
+    >
+      {initials}
+    </span>
+  );
+}
+
+function LogoutModal({ open, onClose, onConfirm, userName }) {
+  const cancelRef = useRef(null);
+  const dialogRef = useRef(null);
+  useBodyScrollLock(open);
+
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement;
+    cancelRef.current?.focus();
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "Tab" && dialogRef.current) {
+        const items = Array.from(
+          dialogRef.current.querySelectorAll("button:not([disabled])"),
+        );
+        if (!items.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+      <div
+        className="absolute inset-0 bg-slate-950/60 backdrop-blur-[5px]"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <section
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logout-title"
+        aria-describedby="logout-description"
+        className="relative w-full max-w-[420px] overflow-hidden rounded-[26px] border border-white/80 bg-white p-6 shadow-[0_30px_100px_rgba(15,23,42,0.28)] sm:p-8"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Tutup dialog"
+          className={`absolute right-5 top-5 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 ${focusRing}`}
+        >
+          <FiX size={19} />
+        </button>
+        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+          <FiLogOut size={25} />
+        </div>
+        <h2
+          id="logout-title"
+          className="text-xl font-bold tracking-tight text-slate-900"
+        >
+          Keluar dari RJPU?
+        </h2>
+        <p
+          id="logout-description"
+          className="mt-2 text-sm leading-6 text-slate-500"
+        >
+          {userName ? `Anda masuk sebagai ${userName}. ` : ""}Pastikan pekerjaan
+          yang belum disimpan sudah selesai sebelum keluar.
+        </p>
+        <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            ref={cancelRef}
+            type="button"
+            onClick={onClose}
+            className={`rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 ${focusRing}`}
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`inline-flex justify-center items-center gap-2 rounded-xl bg-rose-600 px-5 py-3 text-sm font-semibold text-white hover:bg-rose-700 ${focusRing}`}
+          >
+            <FiLogOut /> Ya, keluar
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SidebarNavItem({ item, active, collapsed, onNavigate }) {
+  const Icon = ICONS[item.icon] || FiDatabase;
+  return (
+    <button
+      type="button"
+      onClick={() => onNavigate(item.path)}
+      title={collapsed ? item.label : undefined}
+      aria-current={active ? "page" : undefined}
+      aria-label={item.label}
+      className={`group relative flex w-full items-center rounded-xl text-left transition-colors duration-200 ${focusRing}
+        ${collapsed ? "justify-center px-3 py-3" : "gap-3 px-3.5 py-3"}
+        ${active ? "bg-white/[0.13] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,.09)]" : "text-slate-300 hover:bg-white/[0.07] hover:text-white"}`}
+    >
+      {active && (
+        <span className="absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full bg-sky-400" />
+      )}
+      <Icon
+        className={`shrink-0 text-xl ${active ? "text-sky-300" : "text-slate-400 group-hover:text-white"}`}
+      />
+      {!collapsed && (
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-semibold">
+            {item.label}
+          </span>
+          {item.description && (
+            <span
+              className={`mt-0.5 block truncate text-[10px] ${active ? "text-slate-300" : "text-slate-500"}`}
+            >
+              {item.description}
+            </span>
+          )}
+        </span>
+      )}
+      {active && !collapsed && (
+        <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+      )}
+    </button>
+  );
+}
+
+function SidebarContent({
+  menus,
+  currentPath,
+  collapsed,
+  onNavigate,
+  user,
+  onLogout,
+  onToggle,
+  lastUpdated,
+  mobile = false,
+}) {
+  const isActive = (item) =>
+    item.exact
+      ? currentPath === item.path
+      : currentPath === item.path ||
+        currentPath.startsWith(
+          item.path.endsWith("/") ? item.path : `${item.path}/`,
+        );
+  return (
+    <div className="flex h-full flex-col">
+      <div
+        className={`flex h-[82px] shrink-0 items-center border-b border-white/10 ${collapsed ? "justify-center px-3" : "gap-3 px-5"}`}
+      >
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-sky-400/20 bg-sky-400/15 text-sky-300">
+          <FiZap size={23} />
+        </div>
+        {!collapsed && (
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-extrabold tracking-[0.11em] text-white">
+              RJPU<span className="text-sky-400">.</span>
+            </p>
+            <p className="mt-0.5 truncate text-[10px] tracking-[0.08em] text-slate-400">
+              UNIT PLANNING SYSTEM
+            </p>
+          </div>
+        )}
+        {mobile && (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label="Tutup menu"
+            className={`rounded-lg p-2 text-slate-300 hover:bg-white/10 ${focusRing}`}
+          >
+            <FiX size={20} />
+          </button>
+        )}
+      </div>
+      <nav
+        aria-label="Navigasi utama"
+        className={`min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain py-6 ${collapsed ? "px-2" : "px-3"}`}
+      >
+        {!collapsed && (
+          <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+            Menu Utama
+          </p>
+        )}
+        {menus.map((item) => (
+          <SidebarNavItem
+            key={item.id || item.path}
+            item={item}
+            active={isActive(item)}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+          />
+        ))}
+      </nav>
+      <div
+        className={`shrink-0 border-t border-white/10 ${collapsed ? "p-2" : "p-4"}`}
+      >
+        <div
+          className={`mb-3 flex items-center rounded-2xl bg-white/[0.06] ${collapsed ? "justify-center p-2" : "gap-3 p-3"}`}
+        >
+          <Avatar name={user?.nama} className="h-10 w-10 text-xs" />
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold text-white">
+                {user?.nama || "Pengguna"}
+              </p>
+              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
+                <FiShield size={11} />
+                {user?.role || "User"}
+              </p>
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onLogout}
+          title={collapsed ? "Keluar" : undefined}
+          aria-label="Keluar"
+          className={`flex w-full items-center rounded-xl px-3 py-2.5 text-[13px] font-semibold text-rose-300 hover:bg-rose-400/10 hover:text-rose-200 ${focusRing} ${collapsed ? "justify-center" : "gap-3"}`}
+        >
+          <FiLogOut size={18} />
+          {!collapsed && "Keluar"}
+        </button>
+        {!collapsed && (
+          <p className="mt-3 truncate px-2 text-[10px] text-slate-500">
+            {lastUpdated instanceof Date && !Number.isNaN(lastUpdated.getTime())
+              ? `Sinkron terakhir ${lastUpdated.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`
+              : "RJPU • Monitoring & Planning"}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Forbidden() {
+  return (
+    <div className="mx-auto mt-14 max-w-md rounded-3xl border border-slate-200 bg-white px-7 py-12 text-center shadow-sm">
+      <FiLock className="mx-auto text-3xl text-amber-500" />
+      <h2 className="mt-4 text-lg font-bold text-slate-800">Akses dibatasi</h2>
+      <p className="mt-2 text-sm text-slate-500">
+        Akun Anda tidak memiliki hak akses ke halaman ini.
+      </p>
+    </div>
+  );
+}
+
+function NotFound() {
+  const navigate = useNavigate();
+  return (
+    <div className="mx-auto mt-14 max-w-md rounded-3xl border border-slate-200 bg-white px-7 py-12 text-center shadow-sm">
+      <p className="text-5xl font-extrabold tracking-tight text-sky-500">404</p>
+      <h2 className="mt-3 text-lg font-bold text-slate-900">
+        Halaman tidak ditemukan
+      </h2>
+      <p className="mt-2 text-sm text-slate-500">
+        Tautan mungkin sudah berubah atau halaman tidak tersedia.
+      </p>
+      <button
+        type="button"
+        onClick={() => navigate("/dashboard")}
+        className={`mt-5 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 ${focusRing}`}
+      >
+        Kembali ke dashboard
+      </button>
+    </div>
+  );
+}
+
+export default function Dashboard({ user, onLogout }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const {
+    stats,
+    loading,
+    error,
+    lastUpdated,
+    reload: reloadStats,
+  } = useStatistics();
+  const {
+    notifications,
+    unreadCount,
+    loading: notificationLoading,
+    markAsRead,
+    markAllAsRead,
+  } = useNotifications(user);
+  const [sidebarExpanded, setSidebarExpanded] = useSidebarAutoCollapse(
+    location.pathname,
+  );
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const notificationButtonRef = useRef(null);
+  const mobileMenuButtonRef = useRef(null);
+
+  const closeNotifications = useCallback(() => setShowNotifications(false), []);
+  const closeLogout = useCallback(() => setShowLogoutModal(false), []);
+  useClickOutside(showNotifications, closeNotifications, [
+    ".notification-panel",
+    ".notification-bell",
+  ]);
+  useBodyScrollLock(mobileMenuOpen);
+
+  const accessibleMenus = useMemo(
+    () =>
+      MENU_ITEMS.filter(
+        (item) =>
+          Array.isArray(item.roles) &&
+          item.roles.includes(user?.role || "Admin"),
+      ),
+    [user?.role],
+  );
+
+  const currentMenu = useMemo(
+    () =>
+      accessibleMenus
+        .filter(
+          (item) =>
+            location.pathname === item.path ||
+            (!item.exact &&
+              item.path !== "/" &&
+              location.pathname.startsWith(`${item.path.replace(/\/$/, "")}/`)),
+        )
+        .sort((a, b) => b.path.length - a.path.length)[0],
+    [accessibleMenus, location.pathname],
+  );
+  const currentPageTitle =
+    currentMenu?.label ||
+    (location.pathname === "/" ? "Dashboard" : "RJPU Workspace");
+
+  const navigateTo = useCallback(
+    (path) => {
+      setMobileMenuOpen(false);
+      setShowNotifications(false);
+      navigate(path);
+    },
+    [navigate],
+  );
+
+  const handleConfirmLogout = useCallback(() => {
+    setShowLogoutModal(false);
+    if (typeof onLogout === "function") onLogout();
+    else console.error("Dashboard: onLogout is required for a secure logout.");
+  }, [onLogout]);
+
+  const canAccess = useCallback(
+    (path) => {
+      if (path === "/" || path === "/dashboard") return true;
+      return accessibleMenus.some(
+        (item) =>
+          item.path === path ||
+          (!item.exact &&
+            item.path !== "/" &&
+            path.startsWith(`${item.path.replace(/\/$/, "")}/`)),
+      );
+    },
+    [accessibleMenus],
+  );
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+    setShowNotifications(false);
+  }, [location.pathname]);
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setMobileMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      mobileMenuButtonRef.current?.focus();
+    };
+  }, [mobileMenuOpen]);
+  useEffect(() => {
+    if (!showNotifications) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setShowNotifications(false);
+        notificationButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showNotifications]);
+
+  const renderProtected = (path, element) =>
+    canAccess(path) ? element : <Forbidden />;
+  const sidebarWidth = sidebarExpanded
+    ? SIDEBAR_WIDTH_OPEN
+    : SIDEBAR_WIDTH_CLOSED;
+
+  return (
+    <div className="min-h-screen bg-[#f5f7fb] font-sans text-slate-800 lg:flex">
+      <LogoutModal
+        open={showLogoutModal}
+        onClose={closeLogout}
+        onConfirm={handleConfirmLogout}
+        userName={user?.nama}
+      />
+
+      {/* Sidebar desktop. Menggunakan konstanta lebar lama supaya integrasi tetap kompatibel. */}
+      <aside
+        className={`relative hidden h-screen shrink-0 flex-col bg-[#101b34] shadow-xl transition-[width] duration-300 lg:sticky lg:top-0 lg:flex ${sidebarWidth}`}
+      >
+        <SidebarContent
+          menus={accessibleMenus}
+          currentPath={location.pathname}
+          collapsed={!sidebarExpanded}
+          onNavigate={navigateTo}
+          user={user}
+          onLogout={() => setShowLogoutModal(true)}
+          lastUpdated={lastUpdated}
+        />
+        <button
+          type="button"
+          onClick={() => setSidebarExpanded((prev) => !prev)}
+          aria-label={sidebarExpanded ? "Perkecil sidebar" : "Perbesar sidebar"}
+          aria-expanded={sidebarExpanded}
+          title={sidebarExpanded ? "Perkecil sidebar" : "Perbesar sidebar"}
+          className={`absolute -right-3 top-[102px] z-20 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-md hover:text-sky-600 ${focusRing}`}
+        >
+          {sidebarExpanded ? (
+            <FiChevronLeft size={15} />
+          ) : (
+            <FiChevronRight size={15} />
+          )}
+        </button>
+      </aside>
+
+      {/* Sidebar mobile: drawer overlay, tidak memakan lebar konten. */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-[60] bg-slate-950/55 backdrop-blur-[2px] lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        id="rjpu-mobile-nav"
+        aria-label="Menu navigasi"
+        aria-hidden={!mobileMenuOpen}
+        className={`fixed inset-y-0 left-0 z-[70] w-[min(300px,86vw)] bg-[#101b34] shadow-2xl transition-transform duration-300 lg:hidden ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full pointer-events-none"}`}
+      >
+        <SidebarContent
+          menus={accessibleMenus}
+          currentPath={location.pathname}
+          collapsed={false}
+          mobile
+          onToggle={() => setMobileMenuOpen(false)}
+          onNavigate={navigateTo}
+          user={user}
+          onLogout={() => {
+            setMobileMenuOpen(false);
+            setShowLogoutModal(true);
+          }}
+          lastUpdated={lastUpdated}
+        />
+      </aside>
+
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl">
+          <div className="mx-auto flex min-h-[76px] max-w-[1800px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                ref={mobileMenuButtonRef}
+                type="button"
+                onClick={() => setMobileMenuOpen(true)}
+                aria-label="Buka menu navigasi"
+                aria-controls="rjpu-mobile-nav"
+                aria-expanded={mobileMenuOpen}
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 lg:hidden ${focusRing}`}
+              >
+                <FiMenu size={21} />
+              </button>
+              <div className="min-w-0">
+                <p className="hidden text-[10px] font-bold uppercase tracking-[0.18em] text-sky-600 sm:block">
+                  RJPU / Workspace
+                </p>
+                <h1 className="truncate text-lg font-extrabold tracking-tight text-slate-900 sm:text-[22px]">
+                  {currentPageTitle}
+                </h1>
+                <p className="hidden text-xs text-slate-500 sm:block">
+                  Monitoring dan perencanaan jangka panjang unit
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={reloadStats}
+                disabled={loading}
+                aria-label="Perbarui data"
+                title="Perbarui data"
+                className={`flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-600 disabled:cursor-wait disabled:opacity-60 ${focusRing}`}
+              >
+                <FiRefreshCw
+                  size={18}
+                  className={loading ? "animate-spin" : ""}
+                />
+              </button>
+              <div className="relative">
+                <button
+                  ref={notificationButtonRef}
+                  type="button"
+                  onClick={() => setShowNotifications((v) => !v)}
+                  aria-expanded={showNotifications}
+                  aria-label={`Notifikasi${unreadCount > 0 ? `, ${unreadCount} belum dibaca` : ""}`}
+                  className={`notification-bell relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:bg-sky-50 ${focusRing}`}
+                >
+                  <FiBell size={19} />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-[19px] min-w-[19px] items-center justify-center rounded-full border-2 border-white bg-rose-500 px-1 text-[9px] font-bold text-white">
+                      {unreadCount > BADGE_MAX_DISPLAY
+                        ? `${BADGE_MAX_DISPLAY}+`
+                        : unreadCount}
+                    </span>
+                  )}
+                </button>
+                {showNotifications && (
+                  <div className="notification-panel absolute right-0 top-[calc(100%+12px)] z-50 max-w-[calc(100vw-28px)]">
+                    <NotificationPanel
+                      notifications={notifications}
+                      unreadCount={unreadCount}
+                      onMarkAsRead={markAsRead}
+                      onMarkAllAsRead={markAllAsRead}
+                      onClose={closeNotifications}
+                      loading={notificationLoading}
+                      userRole={user?.role}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="mx-1 hidden h-7 w-px bg-slate-200 sm:block" />
+              <div className="hidden min-w-0 items-center gap-2.5 sm:flex">
+                <Avatar name={user?.nama} className="h-10 w-10 text-[11px]" />
+                <div className="hidden max-w-[125px] lg:block xl:max-w-[180px]">
+                  <p className="truncate text-xs font-bold text-slate-800">
+                    {user?.nama || "Pengguna"}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {user?.role || "User"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          {error && (
+            <div
+              className="mx-4 mb-3 flex items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 sm:mx-6 lg:mx-8"
+              role="alert"
+            >
+              <FiAlertCircle className="shrink-0" />
+              <span className="min-w-0 flex-1">{error}</span>
+              <button
+                type="button"
+                onClick={reloadStats}
+                className={`shrink-0 font-bold underline underline-offset-2 ${focusRing}`}
+              >
+                Coba lagi
+              </button>
+            </div>
+          )}
+        </header>
+
+        <main
+          id="main-content"
+          className="mx-auto w-full max-w-[1800px] p-4 sm:p-6 lg:p-8"
+        >
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_3px_18px_rgba(15,23,42,.025)] sm:px-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
+                <FiActivity size={19} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[13px] font-bold text-slate-900">
+                  Selamat datang
+                  {user?.nama ? `, ${user.nama.split(" ")[0]}` : ""}
+                </p>
+                <p className="text-[11px] leading-5 text-slate-500">
+                  Pantau program, realisasi, dan perkembangan RJPU dari satu
+                  tempat.
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700">
+              <FiShield size={13} /> RJPU Workspace
+            </span>
+          </div>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <DashboardHome stats={stats} loading={loading} user={user} />
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <DashboardHome stats={stats} loading={loading} user={user} />
+              }
+            />
+            <Route
+              path="/mapping-data"
+              element={renderProtected(
+                "/mapping-data",
+                <MappingData userRole={user?.role} viewType="yearly" />,
+              )}
+            />
+            <Route
+              path="/programs"
+              element={renderProtected(
+                "/programs",
+                <ProgramData userRole={user?.role} viewType="programs" />,
+              )}
+            />
+            <Route
+              path="/drop-data"
+              element={renderProtected(
+                "/drop-data",
+                <DropData userRole={user?.role} viewType="drop" />,
+              )}
+            />
+            <Route
+              path="/statistics"
+              element={renderProtected(
+                "/statistics",
+                <DisbursementData
+                  userRole={user?.role}
+                  stats={stats}
+                  loading={loading}
+                />,
+              )}
+            />
+            <Route
+              path="/users"
+              element={renderProtected(
+                "/users",
+                <UserManagement currentUser={user} />,
+              )}
+            />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+          <footer className="mt-10 flex flex-col justify-between gap-2 border-t border-slate-200 pt-4 text-[11px] text-slate-400 sm:flex-row">
+            <span>
+              © {new Date().getFullYear()} RJPU • Unit Planning System
+            </span>
+            <span>Monitoring & Planning Workspace</span>
+          </footer>
+        </main>
+      </div>
+    </div>
+  );
+}
