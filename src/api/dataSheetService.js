@@ -23,7 +23,14 @@ class DataSheetOperations {
       HARGA_TOTAL: 14,
       FILE: 15,
       BIDANG: 16,
-      KETERANGAN: 17,
+      KATEGORI: 17,
+      HARGA_MATERIAL: 18,
+      HARGA_JASA: 19,
+      TKDN: 20,
+      STRATEGIS_RJPU: 21,
+      ASET: 22,
+      DESCRIPTION_ASET: 23,
+      KETERANGAN: 24,
     };
     this.columnNames = [
       "NO",
@@ -43,14 +50,25 @@ class DataSheetOperations {
       "HARGA TOTAL",
       "FILE",
       "BIDANG",
+      "KATEGORI",
+      "HARGA MATERIAL",
+      "HARGA JASA",
+      "TKDN",
+      "STRATEGIS RJPU",
+      "ASET",
+      "DESCRIPTION ASET",
       "KETERANGAN",
     ];
+    this.dataRange = "A:Y";
+    this.lastColumnLetter = "Y";
+    this.validKategori = ["Material", "Jasa", "Material & Jasa"];
   }
 
-  // Helper method untuk mendapatkan filter berdasarkan user yang login
+  // ============================================================
+  // HELPERS
+  // ============================================================
   async getUserFilter() {
     try {
-      // Cek apakah user sudah login
       const isLoggedIn = loginService.checkAuth();
       if (!isLoggedIn) {
         return {
@@ -59,11 +77,9 @@ class DataSheetOperations {
           message: "User not logged in",
         };
       }
-
       const currentUser = loginService.getCurrentUser();
       const isAdmin = currentUser && currentUser.role === "Admin";
 
-      // Jika admin, tidak ada filter bidang
       if (isAdmin) {
         return {
           isAdmin: true,
@@ -71,8 +87,6 @@ class DataSheetOperations {
           message: "Admin has full access",
         };
       }
-
-      // Jika user (non-Admin), filter berdasarkan nama user yang sama dengan bidang
       return {
         isAdmin: false,
         bidangFilter: currentUser ? currentUser.nama : null,
@@ -88,42 +102,128 @@ class DataSheetOperations {
     }
   }
 
-  // Inisialisasi sheet (buat header jika belum ada)
+  escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  normalizeKodeAwal(kodeAwal) {
+    if (!kodeAwal) return "";
+    return kodeAwal
+      .toString()
+      .trim()
+      .toUpperCase()
+      .replace(/^([A-Z])-/, "$1");
+  }
+
+  generateProgramId(kodeAwal, urutan) {
+    if (!kodeAwal) return `MT-XX-${String(urutan).padStart(3, "0")}`;
+    const normalized = this.normalizeKodeAwal(kodeAwal);
+    return `MT-${normalized}-${String(urutan).padStart(3, "0")}`;
+  }
+
+  getNextSequenceForKode(kodeAwal, allData) {
+    if (!kodeAwal) return 1;
+    const normalized = this.normalizeKodeAwal(kodeAwal);
+    let maxSeq = 0;
+    const regex = new RegExp(
+      `^MT-${this.escapeRegex(normalized)}-(\\d+)$`,
+      "i",
+    );
+    for (const item of allData) {
+      const no = (item.no || "").toString().trim();
+      const match = no.match(regex);
+      if (match) {
+        const seq = parseInt(match[1], 10);
+        if (seq > maxSeq) maxSeq = seq;
+      }
+    }
+    return maxSeq + 1;
+  }
+
+  // Validasi kategori + harga. Return { valid, message, hargaMaterial, hargaJasa, hargaTotal }
+  validateKategoriHarga(data) {
+    const kategori = data.kategori || "";
+    if (!this.validKategori.includes(kategori)) {
+      return {
+        valid: false,
+        message:
+          "Kategori wajib dipilih (Material, Jasa, atau Material & Jasa)",
+      };
+    }
+    const hM = parseFloat(data.hargaMaterial) || 0;
+    const hJ = parseFloat(data.hargaJasa) || 0;
+
+    if (kategori === "Material" && hM <= 0) {
+      return {
+        valid: false,
+        message: "Harga Material wajib diisi > 0 untuk kategori Material",
+      };
+    }
+    if (kategori === "Jasa" && hJ <= 0) {
+      return {
+        valid: false,
+        message: "Harga Jasa wajib diisi > 0 untuk kategori Jasa",
+      };
+    }
+    if (kategori === "Material & Jasa" && (hM <= 0 || hJ <= 0)) {
+      return {
+        valid: false,
+        message: "Harga Material dan Harga Jasa wajib diisi > 0",
+      };
+    }
+
+    return {
+      valid: true,
+      hargaMaterial: hM,
+      hargaJasa: hJ,
+      hargaTotal: hM + hJ,
+    };
+  }
+
+  // ============================================================
+  // INIT
+  // ============================================================
   async init() {
     await sheetsService.init();
     await this.ensureHeaders();
-    await this.ensureNotificationSheet(); // Tambahkan ini
+    await this.ensureNotificationSheet();
   }
 
-  // Pastikan header sudah ada di sheet
   async ensureHeaders() {
     try {
-      const allData = await sheetsService.getAllData(this.sheetName, "A:R");
-      if (allData.length === 0) {
-        // Buat header row
-        await sheetsService.writeData(`${this.sheetName}!A1:R1`, [
+      const rawData = await sheetsService.getRawData(
+        this.sheetName,
+        this.dataRange,
+      );
+
+      if (rawData.length === 0) {
+        await sheetsService.writeData(`${this.sheetName}!A1:Y1`, [
           this.columnNames,
         ]);
         console.log("✅ Headers created for Data sheet");
-      } else {
-        // Check if Keterangan column exists, if not add it
-        const firstRow = allData[0];
-        if (firstRow && firstRow.length < 18) {
-          await this.addKeteranganColumn();
-        }
+        return;
+      }
+
+      const currentHeaders = rawData[0] || [];
+      if (currentHeaders.length < this.columnNames.length) {
+        console.log(
+          `🔄 Migrating headers from ${currentHeaders.length} to ${this.columnNames.length} columns...`,
+        );
+        await sheetsService.writeData(`${this.sheetName}!A1:Y1`, [
+          this.columnNames,
+        ]);
+        console.log("✅ Headers migrated successfully");
       }
     } catch (error) {
       console.error("Error ensuring headers:", error);
     }
   }
 
-  // Pastikan Notification sheet sudah ada
   async ensureNotificationSheet() {
     try {
       const notificationExists =
         await sheetsService.sheetExists("Notification");
       if (!notificationExists) {
-        // Buat header untuk Notification sheet
         const headers = [
           "ID_NOTIF",
           "PROGRAM_NO",
@@ -144,24 +244,15 @@ class DataSheetOperations {
     }
   }
 
-  // Tambahkan Keterangan column ke existing sheet
-  async addKeteranganColumn() {
-    try {
-      await sheetsService.updateCell(`${this.sheetName}!R1`, "KETERANGAN");
-      console.log("✅ Keterangan column added to existing sheet");
-    } catch (error) {
-      console.error("Error adding Keterangan column:", error);
-    }
-  }
-
-  // Generate notification ID
+  // ============================================================
+  // NOTIFICATION
+  // ============================================================
   generateNotificationId() {
     const timestamp = Date.now();
     const random = Math.floor(Math.random() * 1000);
     return `NOTIF-${timestamp}-${random}`;
   }
 
-  // Tambahkan notifikasi ke sheet Notification
   async addNotification(programNo, programKerja, pengirim, bidangPengirim) {
     try {
       const notificationId = this.generateNotificationId();
@@ -173,7 +264,6 @@ class DataSheetOperations {
         minute: "2-digit",
         second: "2-digit",
       });
-
       const newNotification = [
         notificationId,
         programNo,
@@ -181,129 +271,84 @@ class DataSheetOperations {
         pengirim,
         bidangPengirim,
         tanggalKirim,
-        "UNREAD", // Status: UNREAD atau READ
-        "", // DIBACA_OLEH
-        "", // TANGGAL_BACA
-        "", // CATATAN
+        "UNREAD",
+        "",
+        "",
+        "",
       ];
-
       const result = await sheetsService.appendData("Notification", [
         newNotification,
       ]);
-
       if (result.success) {
-        console.log(`✅ Notification added for program: ${programKerja}`);
         return {
           success: true,
-          notificationId: notificationId,
+          notificationId,
           message: "Notification created successfully",
         };
-      } else {
-        throw new Error("Failed to append notification");
       }
+      throw new Error("Failed to append notification");
     } catch (error) {
       console.error("Error adding notification:", error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Dapatkan semua notifikasi (dengan filter berdasarkan user)
   async getAllNotifications() {
     await this.ensureNotificationSheet();
-
     try {
       const userFilter = await this.getUserFilter();
       const notifications = await sheetsService.getAllData(
         "Notification",
         "A:J",
       );
+      if (!notifications || notifications.length === 0) return [];
 
-      //console.log("Raw notifications from sheet:", notifications);
-      //console.log("Type of notifications:", typeof notifications);
-      //console.log("Is array?", Array.isArray(notifications));
-      //console.log("Length:", notifications?.length);
-
-      if (!notifications || notifications.length === 0) {
-        console.log("No notifications found");
-        return [];
-      }
-
-      // Cek format data - apakah array of arrays atau array of objects?
       let notificationList = [];
+      const firstRow = notifications[0];
+      const isHeaderRow =
+        Array.isArray(firstRow) &&
+        (firstRow[0] === "ID_NOTIF" ||
+          firstRow[0]?.toString().toUpperCase() === "ID_NOTIF");
+      const startIndex = isHeaderRow ? 1 : 0;
 
-      if (notifications.length > 0) {
-        // Cek apakah row pertama adalah header
-        const firstRow = notifications[0];
-        const isHeaderRow =
-          Array.isArray(firstRow) &&
-          (firstRow[0] === "ID_NOTIF" ||
-            firstRow[0]?.toString().toUpperCase() === "ID_NOTIF");
-
-        let startIndex = isHeaderRow ? 1 : 0;
-
-        //console.log("Is header row:", isHeaderRow);
-        //console.log("Start index:", startIndex);
-
-        // Process each row
-        for (let i = startIndex; i < notifications.length; i++) {
-          const row = notifications[i];
-
-          // Skip empty rows
-          if (!row || row.length === 0) continue;
-
-          // Handle array format
-          if (Array.isArray(row)) {
-            notificationList.push({
-              idNotif: row[0] || "",
-              programNo: row[1] || "",
-              programKerja: row[2] || "",
-              pengirim: row[3] || "",
-              bidangPengirim: row[4] || "",
-              tanggalKirim: row[5] || "",
-              status: row[6] || "UNREAD",
-              dibacaOleh: row[7] || "",
-              tanggalBaca: row[8] || "",
-              catatan: row[9] || "",
-            });
-          }
-          // Handle object format
-          else if (typeof row === "object") {
-            notificationList.push({
-              idNotif: row.ID_NOTIF || row.idNotif || row[0] || "",
-              programNo: row.PROGRAM_NO || row.programNo || row[1] || "",
-              programKerja:
-                row.PROGRAM_KERJA || row.programKerja || row[2] || "",
-              pengirim: row.PENGIRIM || row.pengirim || row[3] || "",
-              bidangPengirim:
-                row.BIDANG_PENGIRIM || row.bidangPengirim || row[4] || "",
-              tanggalKirim:
-                row.TANGGAL_KIRIM || row.tanggalKirim || row[5] || "",
-              status: row.STATUS || row.status || row[6] || "UNREAD",
-              dibacaOleh: row.DIBACA_OLEH || row.dibacaOleh || row[7] || "",
-              tanggalBaca: row.TANGGAL_BACA || row.tanggalBaca || row[8] || "",
-              catatan: row.CATATAN || row.catatan || row[9] || "",
-            });
-          }
+      for (let i = startIndex; i < notifications.length; i++) {
+        const row = notifications[i];
+        if (!row || row.length === 0) continue;
+        if (Array.isArray(row)) {
+          notificationList.push({
+            idNotif: row[0] || "",
+            programNo: row[1] || "",
+            programKerja: row[2] || "",
+            pengirim: row[3] || "",
+            bidangPengirim: row[4] || "",
+            tanggalKirim: row[5] || "",
+            status: row[6] || "UNREAD",
+            dibacaOleh: row[7] || "",
+            tanggalBaca: row[8] || "",
+            catatan: row[9] || "",
+          });
+        } else if (typeof row === "object") {
+          notificationList.push({
+            idNotif: row.ID_NOTIF || row.idNotif || row[0] || "",
+            programNo: row.PROGRAM_NO || row.programNo || row[1] || "",
+            programKerja: row.PROGRAM_KERJA || row.programKerja || row[2] || "",
+            pengirim: row.PENGIRIM || row.pengirim || row[3] || "",
+            bidangPengirim:
+              row.BIDANG_PENGIRIM || row.bidangPengirim || row[4] || "",
+            tanggalKirim: row.TANGGAL_KIRIM || row.tanggalKirim || row[5] || "",
+            status: row.STATUS || row.status || row[6] || "UNREAD",
+            dibacaOleh: row.DIBACA_OLEH || row.dibacaOleh || row[7] || "",
+            tanggalBaca: row.TANGGAL_BACA || row.tanggalBaca || row[8] || "",
+            catatan: row.CATATAN || row.catatan || row[9] || "",
+          });
         }
       }
 
-      //console.log("Processed notification list:", notificationList);
-      //console.log("Number of notifications:", notificationList.length);
-
-      // Filter berdasarkan role
       if (!userFilter.isAdmin) {
-        // User biasa hanya bisa melihat notifikasi dari bidangnya sendiri
-        const filtered = notificationList.filter(
+        return notificationList.filter(
           (notif) => notif.bidangPengirim === userFilter.bidangFilter,
         );
-        console.log(`Filtered for user ${userFilter.bidangFilter}:`, filtered);
-        return filtered;
       }
-
-      // Admin bisa melihat semua notifikasi
       return notificationList;
     } catch (error) {
       console.error("Error getting notifications:", error);
@@ -311,36 +356,23 @@ class DataSheetOperations {
     }
   }
 
-  // Dapatkan notifikasi yang belum dibaca (unread)
   async getUnreadNotifications() {
-    const allNotifications = await this.getAllNotifications();
-    return allNotifications.filter((notif) => notif.status === "UNREAD");
+    const all = await this.getAllNotifications();
+    return all.filter((n) => n.status === "UNREAD");
   }
 
-  // Tandai notifikasi sebagai sudah dibaca
   async markNotificationAsRead(notificationId, readerName) {
     try {
-      const allNotifications = await sheetsService.getRawData(
-        "Notification",
-        "A:J",
-      );
-
+      const all = await sheetsService.getRawData("Notification", "A:J");
       let rowIndex = -1;
-      for (let i = 1; i < allNotifications.length; i++) {
-        const row = allNotifications[i];
-        if (row && row[0] === notificationId) {
+      for (let i = 1; i < all.length; i++) {
+        if (all[i] && all[i][0] === notificationId) {
           rowIndex = i;
           break;
         }
       }
-
-      if (rowIndex === -1) {
-        return {
-          success: false,
-          message: "Notification not found",
-        };
-      }
-
+      if (rowIndex === -1)
+        return { success: false, message: "Notification not found" };
       const sheetRow = rowIndex + 1;
       const tanggalBaca = new Date().toLocaleString("id-ID", {
         year: "numeric",
@@ -350,42 +382,26 @@ class DataSheetOperations {
         minute: "2-digit",
         second: "2-digit",
       });
-
-      // Update status, dibaca oleh, dan tanggal baca
       await sheetsService.updateCell(`Notification!G${sheetRow}`, "READ");
       await sheetsService.updateCell(`Notification!H${sheetRow}`, readerName);
       await sheetsService.updateCell(`Notification!I${sheetRow}`, tanggalBaca);
-
-      return {
-        success: true,
-        message: "Notification marked as read",
-      };
+      return { success: true, message: "Notification marked as read" };
     } catch (error) {
       console.error("Error marking notification as read:", error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Tandai semua notifikasi sebagai sudah dibaca untuk suatu program
   async markAllNotificationsAsRead(programNo, readerName) {
     try {
-      const allNotifications = await sheetsService.getRawData(
-        "Notification",
-        "A:J",
-      );
+      const all = await sheetsService.getRawData("Notification", "A:J");
       const updates = [];
-
-      for (let i = 1; i < allNotifications.length; i++) {
-        const row = allNotifications[i];
+      for (let i = 1; i < all.length; i++) {
+        const row = all[i];
         if (row && row[1] === programNo && row[6] === "UNREAD") {
-          const sheetRow = i + 1;
-          updates.push({ row: sheetRow, index: i });
+          updates.push({ row: i + 1 });
         }
       }
-
       const tanggalBaca = new Date().toLocaleString("id-ID", {
         year: "numeric",
         month: "2-digit",
@@ -394,122 +410,95 @@ class DataSheetOperations {
         minute: "2-digit",
         second: "2-digit",
       });
-
-      for (const update of updates) {
-        await sheetsService.updateCell(`Notification!G${update.row}`, "READ");
-        await sheetsService.updateCell(
-          `Notification!H${update.row}`,
-          readerName,
-        );
-        await sheetsService.updateCell(
-          `Notification!I${update.row}`,
-          tanggalBaca,
-        );
+      for (const u of updates) {
+        await sheetsService.updateCell(`Notification!G${u.row}`, "READ");
+        await sheetsService.updateCell(`Notification!H${u.row}`, readerName);
+        await sheetsService.updateCell(`Notification!I${u.row}`, tanggalBaca);
       }
-
       return {
         success: true,
         message: `${updates.length} notification(s) marked as read`,
       };
     } catch (error) {
       console.error("Error marking all notifications as read:", error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Hapus notifikasi berdasarkan program no
   async deleteNotificationsByProgramNo(programNo) {
     try {
-      const allNotifications = await sheetsService.getRawData(
-        "Notification",
-        "A:J",
-      );
+      const all = await sheetsService.getRawData("Notification", "A:J");
       const toDelete = [];
-
-      for (let i = 1; i < allNotifications.length; i++) {
-        const row = allNotifications[i];
-        if (row && row[1] === programNo) {
-          toDelete.push(i);
-        }
+      for (let i = 1; i < all.length; i++) {
+        if (all[i] && all[i][1] === programNo) toDelete.push(i);
       }
-
-      // Hapus dari bawah ke atas agar index tidak berubah
       for (let i = toDelete.length - 1; i >= 0; i--) {
         const sheetRow = toDelete[i] + 1;
-        const emptyRow = Array(10).fill("");
         await sheetsService.writeData(
           `Notification!A${sheetRow}:J${sheetRow}`,
-          [emptyRow],
+          [Array(10).fill("")],
         );
       }
-
       return {
         success: true,
         message: `${toDelete.length} notification(s) deleted`,
       };
     } catch (error) {
       console.error("Error deleting notifications:", error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Get semua data dengan filter berdasarkan user yang login
+  // ============================================================
+  // GET ALL DATA
+  // ============================================================
   async getAllData() {
     await this.init();
 
     try {
-      const data = await sheetsService.getAllData(this.sheetName, "A:R");
-
-      // Dapatkan filter berdasarkan user yang login
+      const data = await sheetsService.getAllData(
+        this.sheetName,
+        this.dataRange,
+      );
       const userFilter = await this.getUserFilter();
 
-      //console.log("User filter:", userFilter);
-
-      // Cek format data yang diterima
-      const isArrayFormat = data.length > 0 && Array.isArray(data[0]);
       const isObjectFormat =
         data.length > 0 &&
         !Array.isArray(data[0]) &&
         typeof data[0] === "object";
+      const isArrayFormat = data.length > 0 && Array.isArray(data[0]);
 
       let processedData = [];
 
       if (isObjectFormat) {
-        // Format: array of objects dengan key nama kolom
         processedData = data.map((row) => ({
-          no: row["NO"] || row[this.columnNames[0]] || "",
-          programKerja: row["PROGRAM KERJA"] || row[this.columnNames[1]] || "",
-          alasanProgram:
-            row["ALASAN PROGRAM"] || row[this.columnNames[2]] || "",
-          klusterProgram:
-            row["KLUSTER PROGRAM"] || row[this.columnNames[3]] || "",
-          oemNonOem: row["OEM/NON OEM"] || row[this.columnNames[4]] || "",
-          dasarInputProgram:
-            row["DASAR INPUT PROGRAM"] || row[this.columnNames[5]] || "",
-          sasaranRjpp: row["SASARAN RJPP"] || row[this.columnNames[6]] || "",
-          sumberAnggaran:
-            row["SUMBER ANGGARAN"] || row[this.columnNames[7]] || "",
-          estLevering: row["EST LEVERING"] || row[this.columnNames[8]] || "",
-          levelResikoInherent:
-            row["LEVEL RESIKO INHERENT"] || row[this.columnNames[9]] || "",
-          levelRisikoResidual:
-            row["LEVEL RISIKO RESIDUAL"] || row[this.columnNames[10]] || "",
-          sat: row["SAT"] || row[this.columnNames[11]] || "",
-          vol: row["VOL"] || row[this.columnNames[12]] || "",
-          tahun: row["TAHUN"] || row[this.columnNames[13]] || "",
-          hargaTotal: row["HARGA TOTAL"] || row[this.columnNames[14]] || "",
-          file: row["FILE"] || row[this.columnNames[15]] || "",
-          bidang: row["BIDANG"] || row[this.columnNames[16]] || "",
-          keterangan: row["KETERANGAN"] || row[this.columnNames[17]] || "",
+          no: row["NO"] || "",
+          programKerja: row["PROGRAM KERJA"] || "",
+          alasanProgram: row["ALASAN PROGRAM"] || "",
+          klusterProgram: row["KLUSTER PROGRAM"] || "",
+          oemNonOem: row["OEM/NON OEM"] || "",
+          dasarInputProgram: row["DASAR INPUT PROGRAM"] || "",
+          sasaranRjpp: row["SASARAN RJPP"] || "",
+          sumberAnggaran: row["SUMBER ANGGARAN"] || "",
+          estLevering: row["EST LEVERING"] || "",
+          levelResikoInherent: row["LEVEL RESIKO INHERENT"] || "",
+          levelRisikoResidual: row["LEVEL RISIKO RESIDUAL"] || "",
+          sat: row["SAT"] || "",
+          vol: row["VOL"] || "",
+          tahun: row["TAHUN"] || "",
+          hargaTotal: row["HARGA TOTAL"] || "",
+          file: row["FILE"] || "",
+          bidang: row["BIDANG"] || "",
+          kategori: row["KATEGORI"] || "",
+          hargaMaterial: row["HARGA MATERIAL"] || "",
+          hargaJasa: row["HARGA JASA"] || "",
+          tkdn: row["TKDN"] || "",
+          strategisRjpu: row["STRATEGIS RJPU"] || "",
+          aset: row["ASET"] || "",
+          descriptionAset: row["DESCRIPTION ASET"] || "",
+          keterangan: row["KETERANGAN"] || "",
         }));
       } else if (isArrayFormat) {
-        // Format: array of arrays (numeric index)
         processedData = data.map((row) => ({
           no: row[this.columns.NO] || "",
           programKerja: row[this.columns.PROGRAM_KERJA] || "",
@@ -528,14 +517,20 @@ class DataSheetOperations {
           hargaTotal: row[this.columns.HARGA_TOTAL] || "",
           file: row[this.columns.FILE] || "",
           bidang: row[this.columns.BIDANG] || "",
+          kategori: row[this.columns.KATEGORI] || "",
+          hargaMaterial: row[this.columns.HARGA_MATERIAL] || "",
+          hargaJasa: row[this.columns.HARGA_JASA] || "",
+          tkdn: row[this.columns.TKDN] || "",
+          strategisRjpu: row[this.columns.STRATEGIS_RJPU] || "",
+          aset: row[this.columns.ASET] || "",
+          descriptionAset: row[this.columns.DESCRIPTION_ASET] || "",
           keterangan: row[this.columns.KETERANGAN] || "",
         }));
       } else {
-        // Fallback
         processedData = data.map((row) => {
           if (row && typeof row === "object" && !Array.isArray(row)) {
             return {
-              no: row.NO || row["NO"] || "",
+              no: row.NO || "",
               programKerja: row["PROGRAM KERJA"] || row.programKerja || "",
               alasanProgram: row["ALASAN PROGRAM"] || row.alasanProgram || "",
               klusterProgram:
@@ -557,6 +552,14 @@ class DataSheetOperations {
               hargaTotal: row["HARGA TOTAL"] || row.hargaTotal || "",
               file: row.FILE || row.file || "",
               bidang: row.BIDANG || row.bidang || "",
+              kategori: row.KATEGORI || row.kategori || "",
+              hargaMaterial: row["HARGA MATERIAL"] || row.hargaMaterial || "",
+              hargaJasa: row["HARGA JASA"] || row.hargaJasa || "",
+              tkdn: row.TKDN || row.tkdn || "",
+              strategisRjpu: row["STRATEGIS RJPU"] || row.strategisRjpu || "",
+              aset: row.ASET || row.aset || "",
+              descriptionAset:
+                row["DESCRIPTION ASET"] || row.descriptionAset || "",
               keterangan: row.KETERANGAN || row.keterangan || "",
             };
           }
@@ -564,26 +567,16 @@ class DataSheetOperations {
         });
       }
 
-      // Filter data yang memiliki Program Kerja (tidak kosong)
       let filteredData = processedData.filter(
         (item) =>
           item.programKerja && item.programKerja.toString().trim() !== "",
       );
 
-      // TERAPKAN FILTER BERDASARKAN ROLE USER
-      // Jika bukan Admin, filter berdasarkan bidang yang sama dengan nama user
       if (!userFilter.isAdmin && userFilter.bidangFilter) {
         filteredData = filteredData.filter(
           (item) => item.bidang === userFilter.bidangFilter,
         );
-        /*console.log(
-          `Filtered data for user '${userFilter.bidangFilter}': ${filteredData.length} records`,
-        ); */
       }
-
-      /*console.log(
-        `Total data: ${processedData.length}, Data with program: ${filteredData.length}`,
-      ); */
 
       return filteredData;
     } catch (error) {
@@ -592,25 +585,23 @@ class DataSheetOperations {
     }
   }
 
-  // Get raw data tanpa filter (untuk keperluan internal)
   async getRawData() {
     await this.init();
     try {
-      return await sheetsService.getRawData(this.sheetName, "A:R");
+      return await sheetsService.getRawData(this.sheetName, this.dataRange);
     } catch (error) {
       console.error("Error getting raw data:", error);
       return [];
     }
   }
 
-  // Get data by nomor (dengan memperhatikan filter user)
+  // ============================================================
+  // GETTERS
+  // ============================================================
   async getDataByNo(no) {
     const allData = await this.getAllData();
     const userFilter = await this.getUserFilter();
-
     const data = allData.find((item) => item.no === no.toString());
-
-    // Jika data ditemukan tapi user bukan admin, verifikasi lagi bidangnya
     if (
       data &&
       !userFilter.isAdmin &&
@@ -621,76 +612,66 @@ class DataSheetOperations {
       );
       return null;
     }
-
     return data;
   }
 
-  // Get data by tahun (dengan filter)
   async getDataByYear(tahun) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.tahun === tahun.toString());
   }
 
-  // Get data by kluster program (dengan filter)
   async getDataByKluster(kluster) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.klusterProgram === kluster);
   }
 
-  // Get data by sumber anggaran (dengan filter)
   async getDataBySumberAnggaran(sumber) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.sumberAnggaran === sumber);
   }
 
-  // Get data by bidang (method ini tetap ada tapi untuk admin)
   async getDataByBidang(bidang) {
     const userFilter = await this.getUserFilter();
-
-    // Jika user bukan admin, hanya bisa filter bidangnya sendiri
-    if (!userFilter.isAdmin) {
-      if (bidang !== userFilter.bidangFilter) {
-        console.warn(
-          `User ${userFilter.bidangFilter} cannot filter by bidang ${bidang}`,
-        );
-        return [];
-      }
+    if (!userFilter.isAdmin && bidang !== userFilter.bidangFilter) {
+      console.warn(
+        `User ${userFilter.bidangFilter} cannot filter by bidang ${bidang}`,
+      );
+      return [];
     }
-
     const allData = await this.getAllData();
     return allData.filter((item) => item.bidang === bidang);
   }
 
-  // Method untuk mengecek apakah user memiliki akses ke data tertentu
+  async getDataByKategori(kategori) {
+    const allData = await this.getAllData();
+    return allData.filter((item) => item.kategori === kategori);
+  }
+
+  async getDataByAset(aset) {
+    const allData = await this.getAllData();
+    return allData.filter((item) => item.aset === aset);
+  }
+
+  async getDataByTkdn(tkdn) {
+    const allData = await this.getAllData();
+    return allData.filter((item) => item.tkdn === tkdn);
+  }
+
   async hasAccessToData(no) {
     const userFilter = await this.getUserFilter();
-
-    // Admin punya akses penuh
-    if (userFilter.isAdmin) {
-      return true;
-    }
-
-    // Non-admin: cek apakah data memiliki bidang yang sesuai
+    if (userFilter.isAdmin) return true;
     const data = await this.getDataByNo(no);
     if (!data) return false;
-
     return data.bidang === userFilter.bidangFilter;
   }
 
-  // Generate program ID
-  generateProgramId(tahun, urutan) {
-    const year = tahun || new Date().getFullYear();
-    const noUrut = String(urutan).padStart(3, "0");
-    return `PRG-${year}-${noUrut}`;
-  }
-
-  // Add data method (dengan pengecekan akses dan notifikasi)
+  // ============================================================
+  // ADD DATA
+  // ============================================================
   async addData(data) {
     await this.init();
-
     const userFilter = await this.getUserFilter();
 
-    // Non-admin hanya bisa menambah data untuk bidangnya sendiri
     if (!userFilter.isAdmin) {
       if (!data.bidang) {
         data.bidang = userFilter.bidangFilter;
@@ -702,17 +683,28 @@ class DataSheetOperations {
       }
     }
 
-    try {
-      // Get current row count untuk menentukan urutan berikutnya
-      const rowCount = await sheetsService.getRowCount(this.sheetName);
-      const nextUrutan = rowCount + 1;
+    // Validasi kategori & harga
+    const v = this.validateKategoriHarga(data);
+    if (!v.valid) {
+      return { success: false, message: v.message };
+    }
 
-      // Generate Program ID
-      const tahunProgram = data.tahun || new Date().getFullYear().toString();
-      const programId = this.generateProgramId(tahunProgram, nextUrutan);
+    // Validasi strategi
+    const kodeAwal = data.strategisRjpu || "";
+    if (!kodeAwal) {
+      return {
+        success: false,
+        message: "Strategis RJPU wajib dipilih",
+      };
+    }
+
+    try {
+      const allData = await this.getAllData();
+      const nextSeq = this.getNextSequenceForKode(kodeAwal, allData);
+      const programId = this.generateProgramId(kodeAwal, nextSeq);
 
       const newRow = [
-        programId, // NO (Program ID)
+        programId,
         data.programKerja || "",
         data.alasanProgram || "",
         data.klusterProgram || "",
@@ -726,22 +718,29 @@ class DataSheetOperations {
         data.sat || "",
         data.vol || "",
         data.tahun || "",
-        data.hargaTotal || "",
+        v.hargaTotal,
         data.file || "",
         data.bidang || "",
+        data.kategori || "",
+        v.hargaMaterial || "",
+        v.hargaJasa || "",
+        data.tkdn || "",
+        data.strategisRjpu || "",
+        data.aset || "",
+        data.descriptionAset || "",
         data.keterangan || "",
       ];
 
-      const range = `${this.sheetName}!A${nextUrutan + 1}:R${nextUrutan + 1}`;
+      const rowCount = await sheetsService.getRowCount(this.sheetName);
+      const startRow = rowCount + 2;
+      const range = `${this.sheetName}!A${startRow}:Y${startRow}`;
       const result = await sheetsService.writeData(range, [newRow]);
 
-      // Dapatkan informasi pengirim
       const currentUser = loginService.getCurrentUser();
       const pengirim = currentUser ? currentUser.nama : "System";
       const bidangPengirim =
         data.bidang || userFilter.bidangFilter || "Unknown";
 
-      // BUAT NOTIFIKASI
       await this.addNotification(
         programId,
         data.programKerja,
@@ -751,22 +750,21 @@ class DataSheetOperations {
 
       return {
         success: true,
-        message: "Data added successfully with notification",
+        message: "Data added successfully",
         no: programId,
+        hargaTotal: v.hargaTotal,
         data: result,
       };
     } catch (error) {
       console.error("Error adding data:", error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Update data berdasarkan NO (dengan pengecekan akses)
+  // ============================================================
+  // UPDATE DATA
+  // ============================================================
   async updateData(no, updatedData) {
-    // Cek akses terlebih dahulu
     const hasAccess = await this.hasAccessToData(no);
     const userFilter = await this.getUserFilter();
 
@@ -780,9 +778,10 @@ class DataSheetOperations {
     await this.init();
 
     try {
-      // Get raw data to find the row
-      const allDataRaw = await sheetsService.getRawData(this.sheetName, "A:R");
-
+      const allDataRaw = await sheetsService.getRawData(
+        this.sheetName,
+        this.dataRange,
+      );
       let rowIndex = -1;
       for (let i = 1; i < allDataRaw.length; i++) {
         const row = allDataRaw[i];
@@ -795,18 +794,12 @@ class DataSheetOperations {
           break;
         }
       }
-
-      if (rowIndex === -1) {
-        return {
-          success: false,
-          message: `Data with NO ${no} not found`,
-        };
-      }
+      if (rowIndex === -1)
+        return { success: false, message: `Data with NO ${no} not found` };
 
       const sheetRow = rowIndex + 1;
       const currentRow = allDataRaw[rowIndex] || [];
 
-      // Non-admin tidak bisa mengubah bidang
       if (
         !userFilter.isAdmin &&
         updatedData.bidang &&
@@ -818,64 +811,53 @@ class DataSheetOperations {
         };
       }
 
+      const getVal = (key, colIndex) =>
+        updatedData[key] !== undefined
+          ? updatedData[key]
+          : currentRow[colIndex] || "";
+
+      // Gabungkan kategori & harga dari current atau updated
+      const mergedData = {
+        kategori: getVal("kategori", this.columns.KATEGORI),
+        hargaMaterial: getVal("hargaMaterial", this.columns.HARGA_MATERIAL),
+        hargaJasa: getVal("hargaJasa", this.columns.HARGA_JASA),
+      };
+
+      const v = this.validateKategoriHarga(mergedData);
+      if (!v.valid) {
+        return { success: false, message: v.message };
+      }
+
       const updatedRow = [
         no.toString(),
-        updatedData.programKerja !== undefined
-          ? updatedData.programKerja
-          : currentRow[this.columns.PROGRAM_KERJA] || "",
-        updatedData.alasanProgram !== undefined
-          ? updatedData.alasanProgram
-          : currentRow[this.columns.ALASAN_PROGRAM] || "",
-        updatedData.klusterProgram !== undefined
-          ? updatedData.klusterProgram
-          : currentRow[this.columns.KLUSTER_PROGRAM] || "",
-        updatedData.oemNonOem !== undefined
-          ? updatedData.oemNonOem
-          : currentRow[this.columns.OEM_NON_OEM] || "",
-        updatedData.dasarInputProgram !== undefined
-          ? updatedData.dasarInputProgram
-          : currentRow[this.columns.DASAR_INPUT_PROGRAM] || "",
-        updatedData.sasaranRjpp !== undefined
-          ? updatedData.sasaranRjpp
-          : currentRow[this.columns.SASARAN_RJPP] || "",
-        updatedData.sumberAnggaran !== undefined
-          ? updatedData.sumberAnggaran
-          : currentRow[this.columns.SUMBER_ANGGARAN] || "",
-        updatedData.estLevering !== undefined
-          ? updatedData.estLevering
-          : currentRow[this.columns.EST_LEVERING] || "",
-        updatedData.levelResikoInherent !== undefined
-          ? updatedData.levelResikoInherent
-          : currentRow[this.columns.LEVEL_RESIKO_INHERENT] || "",
-        updatedData.levelRisikoResidual !== undefined
-          ? updatedData.levelRisikoResidual
-          : currentRow[this.columns.LEVEL_RISIKO_RESIDUAL] || "",
-        updatedData.sat !== undefined
-          ? updatedData.sat
-          : currentRow[this.columns.SAT] || "",
-        updatedData.vol !== undefined
-          ? updatedData.vol
-          : currentRow[this.columns.VOL] || "",
-        updatedData.tahun !== undefined
-          ? updatedData.tahun
-          : currentRow[this.columns.TAHUN] || "",
-        updatedData.hargaTotal !== undefined
-          ? updatedData.hargaTotal
-          : currentRow[this.columns.HARGA_TOTAL] || "",
-        updatedData.file !== undefined
-          ? updatedData.file
-          : currentRow[this.columns.FILE] || "",
-        updatedData.bidang !== undefined
-          ? updatedData.bidang
-          : currentRow[this.columns.BIDANG] || "",
-        updatedData.keterangan !== undefined
-          ? updatedData.keterangan
-          : currentRow[this.columns.KETERANGAN] || "",
+        getVal("programKerja", this.columns.PROGRAM_KERJA),
+        getVal("alasanProgram", this.columns.ALASAN_PROGRAM),
+        getVal("klusterProgram", this.columns.KLUSTER_PROGRAM),
+        getVal("oemNonOem", this.columns.OEM_NON_OEM),
+        getVal("dasarInputProgram", this.columns.DASAR_INPUT_PROGRAM),
+        getVal("sasaranRjpp", this.columns.SASARAN_RJPP),
+        getVal("sumberAnggaran", this.columns.SUMBER_ANGGARAN),
+        getVal("estLevering", this.columns.EST_LEVERING),
+        getVal("levelResikoInherent", this.columns.LEVEL_RESIKO_INHERENT),
+        getVal("levelRisikoResidual", this.columns.LEVEL_RISIKO_RESIDUAL),
+        getVal("sat", this.columns.SAT),
+        getVal("vol", this.columns.VOL),
+        getVal("tahun", this.columns.TAHUN),
+        v.hargaTotal,
+        getVal("file", this.columns.FILE),
+        getVal("bidang", this.columns.BIDANG),
+        mergedData.kategori,
+        v.hargaMaterial || "",
+        v.hargaJasa || "",
+        getVal("tkdn", this.columns.TKDN),
+        getVal("strategisRjpu", this.columns.STRATEGIS_RJPU),
+        getVal("aset", this.columns.ASET),
+        getVal("descriptionAset", this.columns.DESCRIPTION_ASET),
+        getVal("keterangan", this.columns.KETERANGAN),
       ];
 
-      const range = `${this.sheetName}!A${sheetRow}:R${sheetRow}`;
+      const range = `${this.sheetName}!A${sheetRow}:Y${sheetRow}`;
       const result = await sheetsService.writeData(range, [updatedRow]);
-
       return {
         success: true,
         message: `Data with NO ${no} updated successfully`,
@@ -883,16 +865,14 @@ class DataSheetOperations {
       };
     } catch (error) {
       console.error("Error updating data:", error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Hapus data berdasarkan NO (dengan pengecekan akses)
+  // ============================================================
+  // DELETE DATA
+  // ============================================================
   async deleteData(no) {
-    // Cek akses terlebih dahulu
     const hasAccess = await this.hasAccessToData(no);
     const userFilter = await this.getUserFilter();
 
@@ -906,8 +886,10 @@ class DataSheetOperations {
     await this.init();
 
     try {
-      const allDataRaw = await sheetsService.getRawData(this.sheetName, "A:R");
-
+      const allDataRaw = await sheetsService.getRawData(
+        this.sheetName,
+        this.dataRange,
+      );
       let rowIndex = -1;
       for (let i = 1; i < allDataRaw.length; i++) {
         const row = allDataRaw[i];
@@ -920,76 +902,64 @@ class DataSheetOperations {
           break;
         }
       }
+      if (rowIndex === -1)
+        return { success: false, message: `Data with NO ${no} not found` };
 
-      if (rowIndex === -1) {
-        return {
-          success: false,
-          message: `Data with NO ${no} not found`,
-        };
-      }
-
-      // Hapus notifikasi terkait
       await this.deleteNotificationsByProgramNo(no);
 
       const sheetRow = rowIndex + 1;
-      const emptyRow = Array(18).fill("");
-      const range = `${this.sheetName}!A${sheetRow}:R${sheetRow}`;
-      await sheetsService.writeData(range, [emptyRow]);
+      const emptyRow = Array(this.columnNames.length).fill("");
+      await sheetsService.writeData(
+        `${this.sheetName}!A${sheetRow}:Y${sheetRow}`,
+        [emptyRow],
+      );
 
       await this.renumberData();
-
       return {
         success: true,
         message: `Data with NO ${no} deleted successfully`,
       };
     } catch (error) {
       console.error("Error deleting data:", error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Renumber data setelah delete
   async renumberData() {
     try {
-      const allDataRaw = await sheetsService.getRawData(this.sheetName, "A:R");
+      const allDataRaw = await sheetsService.getRawData(
+        this.sheetName,
+        this.dataRange,
+      );
+      if (!allDataRaw || allDataRaw.length <= 1) return true;
 
-      if (!allDataRaw || allDataRaw.length <= 1) {
-        return true;
-      }
-
-      let urutan = 1;
+      const counters = {};
       const updates = [];
 
       for (let i = 1; i < allDataRaw.length; i++) {
         const row = allDataRaw[i];
-        const hasData =
-          row && row.some((cell) => cell && cell.toString().trim() !== "");
+        const hasData = row && row.some((c) => c && c.toString().trim() !== "");
+        if (!hasData) continue;
 
-        if (hasData) {
-          const tahun =
-            row[this.columns.TAHUN] || new Date().getFullYear().toString();
-          const newId = this.generateProgramId(tahun, urutan);
-          const currentId = row[this.columns.NO];
+        const kodeAwal = row[this.columns.STRATEGIS_RJPU];
+        if (!kodeAwal) continue;
 
-          if (currentId !== newId) {
-            updates.push({
-              rowIndex: i,
-              newId: newId,
-            });
-          }
-          urutan++;
+        if (!counters[kodeAwal]) counters[kodeAwal] = 1;
+        const seq = counters[kodeAwal]++;
+        const newId = this.generateProgramId(kodeAwal, seq);
+        const currentId = row[this.columns.NO];
+
+        if (currentId !== newId) {
+          updates.push({ rowIndex: i, newId });
         }
       }
 
-      for (const update of updates) {
-        const sheetRow = update.rowIndex + 1;
-        const range = `${this.sheetName}!A${sheetRow}`;
-        await sheetsService.updateCell(range, update.newId);
+      for (const u of updates) {
+        await sheetsService.updateCell(
+          `${this.sheetName}!A${u.rowIndex + 1}`,
+          u.newId,
+        );
       }
-
       return true;
     } catch (error) {
       console.error("Error renumbering data:", error);
@@ -997,9 +967,10 @@ class DataSheetOperations {
     }
   }
 
-  // Move to Drop (dengan pengecekan akses)
+  // ============================================================
+  // MOVE TO DROP
+  // ============================================================
   async moveToDrop(no, keterangan = "DROP") {
-    // Cek akses
     const hasAccess = await this.hasAccessToData(no);
     const userFilter = await this.getUserFilter();
 
@@ -1013,18 +984,16 @@ class DataSheetOperations {
     await this.init();
 
     try {
-      const allDataRaw = await sheetsService.getRawData(this.sheetName, "A:R");
-
+      const allDataRaw = await sheetsService.getRawData(
+        this.sheetName,
+        this.dataRange,
+      );
       if (!allDataRaw || allDataRaw.length <= 1) {
-        return {
-          success: false,
-          message: `No data found in sheet`,
-        };
+        return { success: false, message: `No data found in sheet` };
       }
 
       let rowIndex = -1;
       let rowData = null;
-
       for (let i = 1; i < allDataRaw.length; i++) {
         const row = allDataRaw[i];
         if (
@@ -1037,7 +1006,6 @@ class DataSheetOperations {
           break;
         }
       }
-
       if (rowIndex === -1 || !rowData) {
         return {
           success: false,
@@ -1072,15 +1040,22 @@ class DataSheetOperations {
         rowData[this.columns.HARGA_TOTAL] || "",
         rowData[this.columns.FILE] || "",
         rowData[this.columns.BIDANG] || "",
+        rowData[this.columns.KATEGORI] || "",
+        rowData[this.columns.HARGA_MATERIAL] || "",
+        rowData[this.columns.HARGA_JASA] || "",
+        rowData[this.columns.TKDN] || "",
+        rowData[this.columns.STRATEGIS_RJPU] || "",
+        rowData[this.columns.ASET] || "",
+        rowData[this.columns.DESCRIPTION_ASET] || "",
         rowData[this.columns.KETERANGAN] || "",
-        dropDate, // DROP DATE
-        keterangan, // DROP STATUS
-        no.toString(), // ORIGINAL NO
+        dropDate,
+        keterangan,
+        no.toString(),
       ];
 
       const dropExists = await sheetsService.sheetExists("Drop");
       if (!dropExists) {
-        await sheetsService.writeData("Drop!A1:U1", [
+        await sheetsService.writeData("Drop!A1:AB1", [
           [
             "NO",
             "PROGRAM KERJA",
@@ -1099,6 +1074,13 @@ class DataSheetOperations {
             "HARGA TOTAL",
             "FILE",
             "BIDANG",
+            "KATEGORI",
+            "HARGA MATERIAL",
+            "HARGA JASA",
+            "TKDN",
+            "STRATEGIS RJPU",
+            "ASET",
+            "DESCRIPTION ASET",
             "KETERANGAN",
             "DROP DATE",
             "DROP STATUS",
@@ -1108,7 +1090,6 @@ class DataSheetOperations {
       }
 
       const appendResult = await sheetsService.appendData("Drop", [dropRow]);
-
       if (!appendResult.success) {
         return {
           success: false,
@@ -1116,265 +1097,282 @@ class DataSheetOperations {
         };
       }
 
-      // Hapus notifikasi terkait
       await this.deleteNotificationsByProgramNo(no);
 
       const sheetRow = rowIndex + 1;
-      const emptyRow = Array(18).fill("");
-      const range = `${this.sheetName}!A${sheetRow}:R${sheetRow}`;
-      await sheetsService.writeData(range, [emptyRow]);
+      const emptyRow = Array(this.columnNames.length).fill("");
+      await sheetsService.writeData(
+        `${this.sheetName}!A${sheetRow}:Y${sheetRow}`,
+        [emptyRow],
+      );
 
       await this.renumberData();
-
       return {
         success: true,
         message: `Data with NO ${no} moved to Drop sheet successfully`,
       };
     } catch (error) {
       console.error("Error moving data to Drop:", error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Search data (dengan filter)
+  // ============================================================
+  // SEARCH & SUMMARY
+  // ============================================================
   async searchData(keyword) {
     const allData = await this.getAllData();
-    const lowerKeyword = keyword.toLowerCase();
-
-    return allData.filter((item) => {
-      return Object.values(item).some((value) =>
-        value.toString().toLowerCase().includes(lowerKeyword),
-      );
-    });
+    const lower = keyword.toLowerCase();
+    return allData.filter((item) =>
+      Object.values(item).some((v) =>
+        v.toString().toLowerCase().includes(lower),
+      ),
+    );
   }
 
-  // Get summary by tahun (dengan filter)
   async getSummaryByYear() {
     const allData = await this.getAllData();
     const summary = {};
-
     allData.forEach((item) => {
-      const tahun = item.tahun;
-      if (!summary[tahun]) {
-        summary[tahun] = {
-          totalProgram: 0,
-          totalAnggaran: 0,
-          programList: [],
-        };
-      }
-
-      summary[tahun].totalProgram++;
-      const harga = parseFloat(item.hargaTotal) || 0;
-      summary[tahun].totalAnggaran += harga;
-      summary[tahun].programList.push(item.programKerja);
+      const t = item.tahun;
+      if (!summary[t])
+        summary[t] = { totalProgram: 0, totalAnggaran: 0, programList: [] };
+      summary[t].totalProgram++;
+      summary[t].totalAnggaran += parseFloat(item.hargaTotal) || 0;
+      summary[t].programList.push(item.programKerja);
     });
-
     return summary;
   }
 
-  // Get summary by kluster program (dengan filter)
   async getSummaryByKluster() {
     const allData = await this.getAllData();
     const summary = {};
-
     allData.forEach((item) => {
-      const kluster = item.klusterProgram;
-      if (!summary[kluster]) {
-        summary[kluster] = {
-          totalProgram: 0,
-          totalAnggaran: 0,
-          programList: [],
-        };
-      }
-
-      summary[kluster].totalProgram++;
-      const harga = parseFloat(item.hargaTotal) || 0;
-      summary[kluster].totalAnggaran += harga;
-      summary[kluster].programList.push(item.programKerja);
+      const k = item.klusterProgram;
+      if (!summary[k])
+        summary[k] = { totalProgram: 0, totalAnggaran: 0, programList: [] };
+      summary[k].totalProgram++;
+      summary[k].totalAnggaran += parseFloat(item.hargaTotal) || 0;
+      summary[k].programList.push(item.programKerja);
     });
-
     return summary;
   }
 
-  // Get summary by sumber anggaran (dengan filter)
   async getSummaryBySumberAnggaran() {
     const allData = await this.getAllData();
     const summary = {};
-
     allData.forEach((item) => {
-      const sumber = item.sumberAnggaran;
-      if (!summary[sumber]) {
-        summary[sumber] = {
-          totalProgram: 0,
-          totalAnggaran: 0,
-          programList: [],
-        };
-      }
-
-      summary[sumber].totalProgram++;
-      const harga = parseFloat(item.hargaTotal) || 0;
-      summary[sumber].totalAnggaran += harga;
-      summary[sumber].programList.push(item.programKerja);
+      const s = item.sumberAnggaran;
+      if (!summary[s])
+        summary[s] = { totalProgram: 0, totalAnggaran: 0, programList: [] };
+      summary[s].totalProgram++;
+      summary[s].totalAnggaran += parseFloat(item.hargaTotal) || 0;
+      summary[s].programList.push(item.programKerja);
     });
-
     return summary;
   }
 
-  // Get summary by bidang (dengan filter)
   async getSummaryByBidang() {
     const allData = await this.getAllData();
     const summary = {};
-
     allData.forEach((item) => {
-      const bidang = item.bidang;
-      if (!bidang) return;
-
-      if (!summary[bidang]) {
-        summary[bidang] = {
-          totalProgram: 0,
-          totalAnggaran: 0,
-          programList: [],
-        };
-      }
-
-      summary[bidang].totalProgram++;
-      const harga = parseFloat(item.hargaTotal) || 0;
-      summary[bidang].totalAnggaran += harga;
-      summary[bidang].programList.push(item.programKerja);
+      const b = item.bidang;
+      if (!b) return;
+      if (!summary[b])
+        summary[b] = { totalProgram: 0, totalAnggaran: 0, programList: [] };
+      summary[b].totalProgram++;
+      summary[b].totalAnggaran += parseFloat(item.hargaTotal) || 0;
+      summary[b].programList.push(item.programKerja);
     });
-
     return summary;
   }
 
-  // Get file link dari Google Drive
+  async getSummaryByKategori() {
+    const allData = await this.getAllData();
+    const summary = {};
+    allData.forEach((item) => {
+      const k = item.kategori || "(Tanpa Kategori)";
+      if (!summary[k])
+        summary[k] = {
+          totalProgram: 0,
+          totalAnggaran: 0,
+          totalMaterial: 0,
+          totalJasa: 0,
+          programList: [],
+        };
+      summary[k].totalProgram++;
+      summary[k].totalAnggaran += parseFloat(item.hargaTotal) || 0;
+      summary[k].totalMaterial += parseFloat(item.hargaMaterial) || 0;
+      summary[k].totalJasa += parseFloat(item.hargaJasa) || 0;
+      summary[k].programList.push(item.programKerja);
+    });
+    return summary;
+  }
+
+  async getSummaryByAset() {
+    const allData = await this.getAllData();
+    const summary = {};
+    allData.forEach((item) => {
+      const a = item.aset || "(Tanpa Aset)";
+      if (!summary[a])
+        summary[a] = { totalProgram: 0, totalAnggaran: 0, programList: [] };
+      summary[a].totalProgram++;
+      summary[a].totalAnggaran += parseFloat(item.hargaTotal) || 0;
+      summary[a].programList.push(item.programKerja);
+    });
+    return summary;
+  }
+
   async getFileLink(no) {
     const data = await this.getDataByNo(no);
-    if (data && data.file) {
+    if (data && data.file)
       return {
         success: true,
         fileLink: data.file,
         programKerja: data.programKerja,
       };
-    }
     return {
       success: false,
       message: `No file found for program with NO ${no}`,
     };
   }
 
-  // Update file link
   async updateFileLink(no, driveFileLink) {
     return await this.updateData(no, { file: driveFileLink });
   }
-
-  // Update bidang
   async updateBidang(no, bidang) {
-    return await this.updateData(no, { bidang: bidang });
+    return await this.updateData(no, { bidang });
   }
-
-  // Update keterangan
   async updateKeterangan(no, keterangan) {
-    return await this.updateData(no, { keterangan: keterangan });
+    return await this.updateData(no, { keterangan });
+  }
+  async updateKategori(no, kategori) {
+    return await this.updateData(no, { kategori });
+  }
+  async updateTkdn(no, tkdn) {
+    return await this.updateData(no, { tkdn });
+  }
+  async updateStrategisRjpu(no, strategisRjpu) {
+    return await this.updateData(no, { strategisRjpu });
+  }
+  async updateAset(no, aset) {
+    return await this.updateData(no, { aset });
+  }
+  async updateDescriptionAset(no, descriptionAset) {
+    return await this.updateData(no, { descriptionAset });
   }
 
-  // Bulk insert data (dengan pengecekan akses dan notifikasi)
+  // ============================================================
+  // BULK INSERT
+  // ============================================================
   async bulkInsert(dataArray) {
     await this.init();
-
     const userFilter = await this.getUserFilter();
 
     try {
-      const rowCount = await sheetsService.getRowCount(this.sheetName);
+      const allData = await this.getAllData();
+      const counters = {};
       const rows = [];
       const addedPrograms = [];
 
       for (let i = 0; i < dataArray.length; i++) {
-        // Non-admin hanya bisa insert data untuk bidangnya sendiri
+        const item = dataArray[i];
+
         if (!userFilter.isAdmin) {
-          if (!dataArray[i].bidang) {
-            dataArray[i].bidang = userFilter.bidangFilter;
-          } else if (dataArray[i].bidang !== userFilter.bidangFilter) {
+          if (!item.bidang) item.bidang = userFilter.bidangFilter;
+          else if (item.bidang !== userFilter.bidangFilter) {
             return {
               success: false,
-              message: `Access denied: You can only add data for bidang '${userFilter.bidangFilter}'`,
+              message: `Access denied untuk baris ${i + 1}`,
             };
           }
         }
 
-        const tahunProgram =
-          dataArray[i].tahun || new Date().getFullYear().toString();
-        const urutan = rowCount + i + 1;
-        const programId = this.generateProgramId(tahunProgram, urutan);
+        const v = this.validateKategoriHarga(item);
+        if (!v.valid) {
+          return { success: false, message: `Baris ${i + 1}: ${v.message}` };
+        }
+
+        const kodeAwal = item.strategisRjpu;
+        if (!kodeAwal) {
+          return {
+            success: false,
+            message: `Baris ${i + 1}: Strategis RJPU wajib diisi`,
+          };
+        }
+
+        if (!counters[kodeAwal])
+          counters[kodeAwal] = this.getNextSequenceForKode(kodeAwal, allData);
+        const seq = counters[kodeAwal]++;
+        const programId = this.generateProgramId(kodeAwal, seq);
 
         rows.push([
           programId,
-          dataArray[i].programKerja || "",
-          dataArray[i].alasanProgram || "",
-          dataArray[i].klusterProgram || "",
-          dataArray[i].oemNonOem || "",
-          dataArray[i].dasarInputProgram || "",
-          dataArray[i].sasaranRjpp || "",
-          dataArray[i].sumberAnggaran || "",
-          dataArray[i].estLevering || "",
-          dataArray[i].levelResikoInherent || "",
-          dataArray[i].levelRisikoResidual || "",
-          dataArray[i].sat || "",
-          dataArray[i].vol || "",
-          dataArray[i].tahun || "",
-          dataArray[i].hargaTotal || "",
-          dataArray[i].file || "",
-          dataArray[i].bidang || "",
-          dataArray[i].keterangan || "",
+          item.programKerja || "",
+          item.alasanProgram || "",
+          item.klusterProgram || "",
+          item.oemNonOem || "",
+          item.dasarInputProgram || "",
+          item.sasaranRjpp || "",
+          item.sumberAnggaran || "",
+          item.estLevering || "",
+          item.levelResikoInherent || "",
+          item.levelRisikoResidual || "",
+          item.sat || "",
+          item.vol || "",
+          item.tahun || "",
+          v.hargaTotal,
+          item.file || "",
+          item.bidang || "",
+          item.kategori || "",
+          v.hargaMaterial || "",
+          v.hargaJasa || "",
+          item.tkdn || "",
+          item.strategisRjpu || "",
+          item.aset || "",
+          item.descriptionAset || "",
+          item.keterangan || "",
         ]);
 
         addedPrograms.push({
-          programId: programId,
-          programKerja: dataArray[i].programKerja,
-          bidang: dataArray[i].bidang || userFilter.bidangFilter,
+          programId,
+          programKerja: item.programKerja,
+          bidang: item.bidang || userFilter.bidangFilter,
         });
       }
 
+      const rowCount = await sheetsService.getRowCount(this.sheetName);
       const startRow = rowCount + 2;
       const endRow = rowCount + 1 + dataArray.length;
-      const range = `${this.sheetName}!A${startRow}:R${endRow}`;
+      const range = `${this.sheetName}!A${startRow}:Y${endRow}`;
       const result = await sheetsService.writeData(range, rows);
 
-      // Dapatkan informasi pengirim
       const currentUser = loginService.getCurrentUser();
       const pengirim = currentUser ? currentUser.nama : "System";
 
-      // Buat notifikasi untuk setiap program yang ditambahkan
-      for (const program of addedPrograms) {
+      for (const p of addedPrograms) {
         await this.addNotification(
-          program.programId,
-          program.programKerja,
+          p.programId,
+          p.programKerja,
           pengirim,
-          program.bidang,
+          p.bidang,
         );
       }
 
       return {
         success: true,
-        message: `${dataArray.length} data added successfully with notifications`,
+        message: `${dataArray.length} data added successfully`,
         data: result,
       };
     } catch (error) {
       console.error("Error bulk inserting data:", error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Export all data to JSON (dengan filter)
   async exportToJSON() {
     const allData = await this.getAllData();
     const userFilter = await this.getUserFilter();
-
     return {
       success: true,
       data: allData,
@@ -1387,27 +1385,23 @@ class DataSheetOperations {
     };
   }
 
-  // Get paginated data (dengan filter)
   async getPaginatedData(page = 1, limit = 10) {
     const allData = await this.getAllData();
     const start = (page - 1) * limit;
     const end = start + limit;
-
     return {
       success: true,
       data: allData.slice(start, end),
       currentPage: page,
       totalPages: Math.ceil(allData.length / limit),
       totalItems: allData.length,
-      limit: limit,
+      limit,
     };
   }
 
-  // Method untuk mendapatkan informasi akses user
   async getUserDataAccessInfo() {
     const userFilter = await this.getUserFilter();
     const allData = await this.getAllData();
-
     return {
       isAdmin: userFilter.isAdmin,
       bidang: userFilter.bidangFilter,
@@ -1420,7 +1414,6 @@ class DataSheetOperations {
     };
   }
 
-  // Get statistics with filter
   async getStatistics() {
     const allData = await this.getAllData();
     const userFilter = await this.getUserFilter();
@@ -1428,6 +1421,14 @@ class DataSheetOperations {
     const totalPrograms = allData.length;
     const totalBudget = allData.reduce(
       (sum, item) => sum + (parseFloat(item.hargaTotal) || 0),
+      0,
+    );
+    const totalMaterial = allData.reduce(
+      (sum, item) => sum + (parseFloat(item.hargaMaterial) || 0),
+      0,
+    );
+    const totalJasa = allData.reduce(
+      (sum, item) => sum + (parseFloat(item.hargaJasa) || 0),
       0,
     );
 
@@ -1440,18 +1441,30 @@ class DataSheetOperations {
     const bidangs = [
       ...new Set(allData.map((item) => item.bidang).filter(Boolean)),
     ];
+    const kategoris = [
+      ...new Set(allData.map((item) => item.kategori).filter(Boolean)),
+    ];
+    const asets = [
+      ...new Set(allData.map((item) => item.aset).filter(Boolean)),
+    ];
 
     return {
       success: true,
       statistics: {
         totalPrograms,
         totalBudget,
+        totalMaterial,
+        totalJasa,
         uniqueYears: years.length,
         uniqueClusters: clusters.length,
         uniqueBidangs: bidangs.length,
+        uniqueKategoris: kategoris.length,
+        uniqueAsets: asets.length,
         yearsList: years.sort(),
         clustersList: clusters.sort(),
         bidangsList: bidangs.sort(),
+        kategorisList: kategoris.sort(),
+        asetsList: asets.sort(),
       },
       userInfo: {
         role: userFilter.isAdmin ? "Admin" : "User",
@@ -1460,33 +1473,23 @@ class DataSheetOperations {
     };
   }
 
-  // Validate data before insert/update
   validateData(data) {
     const errors = [];
-
-    if (!data.programKerja || data.programKerja.trim() === "") {
+    if (!data.programKerja || data.programKerja.trim() === "")
       errors.push("Program Kerja is required");
-    }
-
-    if (!data.tahun || data.tahun.trim() === "") {
+    if (!data.tahun || data.tahun.trim() === "")
       errors.push("Tahun is required");
-    }
-
-    if (data.hargaTotal && isNaN(parseFloat(data.hargaTotal))) {
+    if (data.hargaTotal && isNaN(parseFloat(data.hargaTotal)))
       errors.push("Harga Total must be a number");
-    }
-
-    if (data.vol && isNaN(parseFloat(data.vol))) {
+    if (data.vol && isNaN(parseFloat(data.vol)))
       errors.push("VOL must be a number");
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors: errors,
-    };
+    if (data.tkdn && isNaN(parseFloat(data.tkdn)))
+      errors.push("TKDN must be a number");
+    const kv = this.validateKategoriHarga(data);
+    if (!kv.valid) errors.push(kv.message);
+    return { isValid: errors.length === 0, errors };
   }
 }
 
-// Export singleton instance
 const dataSheetOperations = new DataSheetOperations();
 export default dataSheetOperations;

@@ -18,7 +18,6 @@ import {
   FiGrid,
   FiList,
   FiInfo,
-  FiCopy,
   FiCheck,
   FiAlertCircle,
   FiTrendingUp,
@@ -30,69 +29,48 @@ import {
 } from "react-icons/fi";
 import { motion, AnimatePresence } from "framer-motion";
 import dataSheet from "../../api/dataSheetService";
+import assetService from "../../api/asetSheetService";
+import strategiService from "../../api/strategiSheetService";
 
-// Skeleton Components
-const SkeletonCard = () => (
-  <div className="bg-white rounded-[22px] p-5 shadow-sm animate-pulse">
-    <div className="flex items-start justify-between mb-3">
-      <div className="h-4 bg-gray-200 rounded w-16"></div>
-      <div className="h-6 bg-gray-200 rounded w-20"></div>
-    </div>
-    <div className="h-5 bg-gray-200 rounded w-3/4 mb-2"></div>
-    <div className="h-4 bg-gray-200 rounded w-full mb-3"></div>
-    <div className="flex flex-wrap gap-2 mb-3">
-      <div className="h-6 bg-gray-200 rounded w-20"></div>
-      <div className="h-6 bg-gray-200 rounded w-16"></div>
-      <div className="h-6 bg-gray-200 rounded w-24"></div>
-    </div>
-    <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-      <div className="h-5 bg-gray-200 rounded w-24"></div>
-      <div className="flex gap-1">
-        <div className="w-7 h-7 bg-gray-200 rounded-lg"></div>
-        <div className="w-7 h-7 bg-gray-200 rounded-lg"></div>
-      </div>
-    </div>
-  </div>
-);
-
+// ==================== Skeletons ====================
 const SkeletonTableRow = () => (
   <tr className="border-t border-slate-100">
     <td className="px-4 py-3">
-      <div className="h-4 bg-gray-200 rounded w-8 animate-pulse"></div>
+      <div className="h-4 bg-gray-200 rounded w-8 animate-pulse" />
     </td>
     <td className="px-4 py-3">
-      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
+      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse" />
     </td>
     <td className="px-4 py-3">
-      <div className="h-5 bg-gray-200 rounded w-48 animate-pulse"></div>
-      <div className="h-3 bg-gray-200 rounded w-64 mt-1 animate-pulse"></div>
+      <div className="h-5 bg-gray-200 rounded w-48 animate-pulse" />
+      <div className="h-3 bg-gray-200 rounded w-64 mt-1 animate-pulse" />
     </td>
     <td className="px-4 py-3">
-      <div className="h-6 bg-gray-200 rounded w-24 animate-pulse"></div>
+      <div className="h-6 bg-gray-200 rounded w-24 animate-pulse" />
     </td>
     <td className="px-4 py-3">
-      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
+      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse" />
     </td>
     <td className="px-4 py-3 text-center">
-      <div className="h-6 bg-gray-200 rounded w-16 mx-auto animate-pulse"></div>
+      <div className="h-6 bg-gray-200 rounded w-16 mx-auto animate-pulse" />
     </td>
     <td className="px-4 py-3 text-right">
-      <div className="h-4 bg-gray-200 rounded w-24 ml-auto animate-pulse"></div>
+      <div className="h-4 bg-gray-200 rounded w-24 ml-auto animate-pulse" />
     </td>
     <td className="px-4 py-3 text-center">
-      <div className="h-6 bg-gray-200 rounded w-16 mx-auto animate-pulse"></div>
+      <div className="h-6 bg-gray-200 rounded w-16 mx-auto animate-pulse" />
     </td>
     <td className="px-4 py-3 text-center">
-      <div className="h-4 bg-gray-200 rounded w-12 mx-auto animate-pulse"></div>
+      <div className="h-4 bg-gray-200 rounded w-12 mx-auto animate-pulse" />
     </td>
     <td className="px-4 py-3 text-center">
-      <div className="h-4 bg-gray-200 rounded w-12 mx-auto animate-pulse"></div>
+      <div className="h-4 bg-gray-200 rounded w-12 mx-auto animate-pulse" />
     </td>
     <td className="px-4 py-3 text-center">
       <div className="flex gap-1 justify-center">
-        <div className="w-7 h-7 bg-gray-200 rounded-lg"></div>
-        <div className="w-7 h-7 bg-gray-200 rounded-lg"></div>
-        <div className="w-7 h-7 bg-gray-200 rounded-lg"></div>
+        <div className="w-7 h-7 bg-gray-200 rounded-lg" />
+        <div className="w-7 h-7 bg-gray-200 rounded-lg" />
+        <div className="w-7 h-7 bg-gray-200 rounded-lg" />
       </div>
     </td>
   </tr>
@@ -103,19 +81,21 @@ const SkeletonStatsCard = () => (
     <div className="relative p-5 md:p-6">
       <div className="flex items-start justify-between mb-4">
         <div className="p-3 rounded-2xl bg-gray-200">
-          <div className="w-6 h-6"></div>
+          <div className="w-6 h-6" />
         </div>
         <div className="text-right">
-          <div className="h-8 bg-gray-200 rounded w-16"></div>
+          <div className="h-8 bg-gray-200 rounded w-16" />
         </div>
       </div>
-      <div className="h-5 bg-gray-200 rounded w-24 mb-1"></div>
-      <div className="h-3 bg-gray-200 rounded w-32"></div>
+      <div className="h-5 bg-gray-200 rounded w-24 mb-1" />
+      <div className="h-3 bg-gray-200 rounded w-32" />
     </div>
   </div>
 );
 
+// ==================== Main Component ====================
 const ProgramData = ({ userRole }) => {
+  // Data
   const [programs, setPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -139,7 +119,17 @@ const ProgramData = ({ userRole }) => {
   const [loadingSave, setLoadingSave] = useState(false);
   const [loadingExport, setLoadingExport] = useState(false);
 
-  // Dropdown options
+  // Master data
+  const [assets, setAssets] = useState([]);
+  const [strategis, setStrategis] = useState([]);
+  const [loadingAssets, setLoadingAssets] = useState(false);
+  const [loadingStrategis, setLoadingStrategis] = useState(false);
+
+  // Aset searchable
+  const [assetSearch, setAssetSearch] = useState("");
+  const [showAssetDropdown, setShowAssetDropdown] = useState(false);
+
+  // Dropdown options statis
   const klusterOptions = [
     "Major OH & HGPP",
     "Kehandalan Pembangkit",
@@ -151,7 +141,6 @@ const ProgramData = ({ userRole }) => {
     "Infrastruktur IT",
     "Infrastruktur Sipil & Bangunan",
   ];
-
   const oemOptions = ["OEM", "NON OEM"];
   const dasarInputProgramOptions = [
     "Kepatuhan Regulasi",
@@ -194,10 +183,32 @@ const ProgramData = ({ userRole }) => {
     "Kimia",
     "K3",
   ];
+  const kategoriOptions = ["Material", "Jasa", "Material & Jasa"];
+  const tkdnOptions = ["Ya", "Tidak"];
 
+  // Effects
   useEffect(() => {
     loadPrograms();
+    loadMasterData();
   }, []);
+
+  const loadMasterData = async () => {
+    setLoadingAssets(true);
+    setLoadingStrategis(true);
+    try {
+      const [assetList, strategiList] = await Promise.all([
+        assetService.getAllAssets(),
+        strategiService.getAllStrategi(),
+      ]);
+      setAssets(assetList || []);
+      setStrategis(strategiList || []);
+    } catch (err) {
+      console.error("Failed loading master data:", err);
+    } finally {
+      setLoadingAssets(false);
+      setLoadingStrategis(false);
+    }
+  };
 
   const showToast = (message, type = "success") => {
     setToast({ show: true, message, type });
@@ -216,6 +227,7 @@ const ProgramData = ({ userRole }) => {
     }
   };
 
+  // Handlers
   const handleAdd = () => {
     setEditingProgram(null);
     setFormData({
@@ -235,6 +247,13 @@ const ProgramData = ({ userRole }) => {
       hargaTotal: "",
       file: "",
       bidang: "",
+      kategori: "",
+      hargaMaterial: "",
+      hargaJasa: "",
+      tkdn: "",
+      strategisRjpu: "",
+      aset: "",
+      descriptionAset: "",
       keterangan: "",
     });
     setShowModal(true);
@@ -251,6 +270,45 @@ const ProgramData = ({ userRole }) => {
     setShowDetailModal(true);
   };
 
+  const handleAsetChange = (namaAset) => {
+    const asset = assets.find((a) => a.namaAset === namaAset);
+    setFormData((prev) => ({
+      ...prev,
+      aset: namaAset,
+      descriptionAset: asset ? asset.deskripsi : "",
+    }));
+  };
+
+  const handleKategoriChange = (kategori) => {
+    setFormData((prev) => {
+      const updated = { ...prev, kategori };
+      if (kategori === "Material") {
+        updated.hargaJasa = "";
+      } else if (kategori === "Jasa") {
+        updated.hargaMaterial = "";
+        updated.aset = "Jasa";
+        updated.descriptionAset = "";
+      }
+      return updated;
+    });
+  };
+
+  const computedHargaTotal = useMemo(() => {
+    const hM = parseFloat(formData.hargaMaterial) || 0;
+    const hJ = parseFloat(formData.hargaJasa) || 0;
+    return hM + hJ;
+  }, [formData.hargaMaterial, formData.hargaJasa]);
+
+  const filteredAssets = useMemo(() => {
+    if (!assetSearch.trim()) return assets;
+    const q = assetSearch.toLowerCase().trim();
+    return assets.filter(
+      (a) =>
+        a.namaAset.toLowerCase().includes(q) ||
+        a.deskripsi.toLowerCase().includes(q),
+    );
+  }, [assets, assetSearch]);
+
   const confirmDelete = (no, programName) => {
     setProgramToDelete({ no, programName });
     setShowDeleteConfirm(true);
@@ -258,12 +316,10 @@ const ProgramData = ({ userRole }) => {
 
   const executeDelete = async () => {
     if (!programToDelete) return;
-
     setLoadingDelete(true);
     try {
       const { no, programName } = programToDelete;
       const result = await dataSheet.moveToDrop(no, "DROP");
-
       if (result.success) {
         await loadPrograms();
         showToast(
@@ -284,28 +340,21 @@ const ProgramData = ({ userRole }) => {
 
   const handleBulkDelete = async () => {
     if (selectedPrograms.length === 0) return;
-
     setLoadingBulkDelete(true);
-    let successCount = 0;
-    let failCount = 0;
-
+    let ok = 0;
+    let fail = 0;
     try {
       for (const no of selectedPrograms) {
         const result = await dataSheet.moveToDrop(no, "DROP");
-        if (result.success) {
-          successCount++;
-        } else {
-          failCount++;
-        }
+        if (result.success) ok++;
+        else fail++;
       }
-
       await loadPrograms();
       setSelectedPrograms([]);
-
-      if (successCount > 0) {
+      if (ok > 0) {
         showToast(
-          `${successCount} program berhasil dipindahkan ke arsip Drop${failCount > 0 ? `, ${failCount} gagal` : ""}`,
-          successCount > 0 ? "success" : "error",
+          `${ok} program dipindahkan ke Drop${fail > 0 ? `, ${fail} gagal` : ""}`,
+          "success",
         );
       } else {
         showToast("Gagal menghapus program", "error");
@@ -341,26 +390,54 @@ const ProgramData = ({ userRole }) => {
       showToast("Tahun wajib diisi", "error");
       return;
     }
+    if (!formData.kategori) {
+      showToast("Kategori wajib dipilih", "error");
+      return;
+    }
+    if (!editingProgram && !formData.strategisRjpu) {
+      showToast(
+        "Strategis RJPU wajib dipilih (untuk generate nomor program)",
+        "error",
+      );
+      return;
+    }
+
+    const hM = parseFloat(formData.hargaMaterial) || 0;
+    const hJ = parseFloat(formData.hargaJasa) || 0;
+
+    if (formData.kategori === "Material" && hM <= 0) {
+      showToast("Harga Material wajib diisi > 0", "error");
+      return;
+    }
+    if (formData.kategori === "Jasa" && hJ <= 0) {
+      showToast("Harga Jasa wajib diisi > 0", "error");
+      return;
+    }
+    if (formData.kategori === "Material & Jasa" && (hM <= 0 || hJ <= 0)) {
+      showToast("Harga Material & Jasa wajib diisi > 0", "error");
+      return;
+    }
 
     setLoadingSave(true);
     try {
+      const payload = { ...formData, hargaTotal: hM + hJ };
       if (editingProgram) {
-        const result = await dataSheet.updateData(editingProgram.no, formData);
+        const result = await dataSheet.updateData(editingProgram.no, payload);
         if (result.success) {
           await loadPrograms();
           setShowModal(false);
           showToast("Program berhasil diupdate", "success");
         } else {
-          showToast("Gagal mengupdate program: " + result.message, "error");
+          showToast("Gagal: " + result.message, "error");
         }
       } else {
-        const result = await dataSheet.addData(formData);
+        const result = await dataSheet.addData(payload);
         if (result.success) {
           await loadPrograms();
           setShowModal(false);
-          showToast("Program berhasil ditambahkan", "success");
+          showToast(`Program ${result.no} berhasil ditambahkan`, "success");
         } else {
-          showToast("Gagal menambahkan program: " + result.message, "error");
+          showToast("Gagal: " + result.message, "error");
         }
       }
     } catch (error) {
@@ -409,13 +486,44 @@ const ProgramData = ({ userRole }) => {
       "HARGA TOTAL",
       "FILE",
       "BIDANG",
+      "KATEGORI",
+      "HARGA MATERIAL",
+      "HARGA JASA",
+      "TKDN",
+      "STRATEGIS RJPU",
+      "ASET",
+      "DESCRIPTION ASET",
       "KETERANGAN",
     ];
+    const fieldMap = {
+      NO: "no",
+      "PROGRAM KERJA": "programKerja",
+      "ALASAN PROGRAM": "alasanProgram",
+      "KLUSTER PROGRAM": "klusterProgram",
+      "OEM/NON OEM": "oemNonOem",
+      "DASAR INPUT PROGRAM": "dasarInputProgram",
+      "SASARAN RJPP": "sasaranRjpp",
+      "SUMBER ANGGARAN": "sumberAnggaran",
+      "EST LEVERING": "estLevering",
+      "LEVEL RESIKO INHERENT": "levelResikoInherent",
+      "LEVEL RISIKO RESIDUAL": "levelRisikoResidual",
+      SAT: "sat",
+      VOL: "vol",
+      TAHUN: "tahun",
+      "HARGA TOTAL": "hargaTotal",
+      FILE: "file",
+      BIDANG: "bidang",
+      KATEGORI: "kategori",
+      "HARGA MATERIAL": "hargaMaterial",
+      "HARGA JASA": "hargaJasa",
+      TKDN: "tkdn",
+      "STRATEGIS RJPU": "strategisRjpu",
+      ASET: "aset",
+      "DESCRIPTION ASET": "descriptionAset",
+      KETERANGAN: "keterangan",
+    };
     const rows = data.map((item) =>
-      headers.map((h) => {
-        const key = h.toLowerCase().replace(/ /g, "");
-        return item[key] || item[h] || "";
-      }),
+      headers.map((h) => item[fieldMap[h]] || ""),
     );
     return [headers, ...rows]
       .map((row) => row.map((cell) => `"${cell || ""}"`).join(","))
@@ -442,25 +550,20 @@ const ProgramData = ({ userRole }) => {
   };
 
   const getRiskColor = (risk) => {
-    const colors = {
+    const c = {
       Rendah: "bg-emerald-100 text-emerald-700",
       Moderat: "bg-amber-100 text-amber-700",
       Tinggi: "bg-orange-100 text-orange-700",
       "Sangat Tinggi": "bg-red-100 text-red-700",
       Ekstrem: "bg-purple-100 text-purple-700",
     };
-    return colors[risk] || "bg-gray-100 text-gray-700";
+    return c[risk] || "bg-gray-100 text-gray-700";
   };
 
   const getRiskIcon = (risk) => {
-    const icons = {
-      Rendah: <FiCheck className="w-3 h-3" />,
-      Moderat: <FiAlertCircle className="w-3 h-3" />,
-      Tinggi: <FiAlertCircle className="w-3 h-3" />,
-      "Sangat Tinggi": <FiAlertCircle className="w-3 h-3" />,
-      Ekstrem: <FiAlertCircle className="w-3 h-3" />,
-    };
-    return icons[risk] || null;
+    if (risk === "Rendah") return <FiCheck className="w-3 h-3" />;
+    if (risk) return <FiAlertCircle className="w-3 h-3" />;
+    return null;
   };
 
   const getYears = useMemo(() => {
@@ -485,7 +588,10 @@ const ProgramData = ({ userRole }) => {
           p.klusterProgram?.toLowerCase().includes(term) ||
           p.tahun?.includes(term) ||
           p.sumberAnggaran?.toLowerCase().includes(term) ||
-          p.bidang?.toLowerCase().includes(term),
+          p.bidang?.toLowerCase().includes(term) ||
+          p.kategori?.toLowerCase().includes(term) ||
+          p.aset?.toLowerCase().includes(term) ||
+          p.strategisRjpu?.toLowerCase().includes(term),
       );
     }
     if (filterYear !== "all")
@@ -502,12 +608,14 @@ const ProgramData = ({ userRole }) => {
     currentPage * itemsPerPage,
   );
 
-  const totalAnggaran = useMemo(() => {
-    return filteredPrograms.reduce(
-      (sum, p) => sum + (parseFloat(p.hargaTotal) || 0),
-      0,
-    );
-  }, [filteredPrograms]);
+  const totalAnggaran = useMemo(
+    () =>
+      filteredPrograms.reduce(
+        (sum, p) => sum + (parseFloat(p.hargaTotal) || 0),
+        0,
+      ),
+    [filteredPrograms],
+  );
 
   const resetFilters = () => {
     setSearchTerm("");
@@ -532,14 +640,22 @@ const ProgramData = ({ userRole }) => {
   };
 
   const getYearBadgeColor = (year) => {
-    const colors = {
+    const c = {
       2024: "bg-indigo-100 text-indigo-700",
       2025: "bg-purple-100 text-purple-700",
     };
-    return colors[year] || "bg-gray-100 text-gray-700";
+    return c[year] || "bg-gray-100 text-gray-700";
   };
 
-  // Loading overlay component
+  const getKategoriBadge = (kategori) => {
+    const map = {
+      Material: "bg-blue-100 text-blue-700",
+      Jasa: "bg-purple-100 text-purple-700",
+      "Material & Jasa": "bg-orange-100 text-orange-700",
+    };
+    return map[kategori] || "bg-gray-100 text-gray-600";
+  };
+
   const LoadingOverlay = ({ message }) => (
     <motion.div
       initial={{ opacity: 0 }}
@@ -548,90 +664,55 @@ const ProgramData = ({ userRole }) => {
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]"
     >
       <div className="bg-white rounded-[22px] p-6 flex flex-col items-center gap-4 shadow-xl">
-        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
         <p className="text-slate-700 font-medium">{message}</p>
       </div>
     </motion.div>
   );
 
-  // Loading Skeleton View
+  // ==================== LOADING ====================
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f5f7fb] p-0 text-slate-800">
-        {/* Header Skeleton */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5 mb-6 rounded-[26px] bg-[#101b34] px-5 py-6 md:px-7 md:py-7 shadow-[0_16px_38px_rgba(16,27,52,.13)]">
             <div>
-              <div className="h-10 bg-gray-200 rounded w-48 animate-pulse mb-2"></div>
-              <div className="h-4 bg-gray-200 rounded w-64 animate-pulse"></div>
+              <div className="h-10 bg-gray-200 rounded w-48 animate-pulse mb-2" />
+              <div className="h-4 bg-gray-200 rounded w-64 animate-pulse" />
             </div>
             <div className="flex flex-wrap gap-3">
-              <div className="h-10 bg-gray-200 rounded-2xl w-32 animate-pulse"></div>
-              <div className="h-10 bg-gray-200 rounded-2xl w-32 animate-pulse"></div>
+              <div className="h-10 bg-gray-200 rounded-2xl w-32 animate-pulse" />
+              <div className="h-10 bg-gray-200 rounded-2xl w-32 animate-pulse" />
             </div>
           </div>
-
-          {/* Stats Cards Skeleton */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
             <SkeletonStatsCard />
             <SkeletonStatsCard />
             <SkeletonStatsCard />
             <SkeletonStatsCard />
           </div>
-
-          {/* Filters Bar Skeleton */}
           <div className="bg-white rounded-[22px] shadow-[0_4px_24px_rgba(15,23,42,0.035)] border border-slate-200/80 p-4 animate-pulse">
             <div className="flex flex-col lg:flex-row gap-4">
-              <div className="flex-1 h-11 bg-gray-200 rounded-2xl"></div>
-              <div className="w-40 h-11 bg-gray-200 rounded-2xl"></div>
-              <div className="w-48 h-11 bg-gray-200 rounded-2xl"></div>
+              <div className="flex-1 h-11 bg-gray-200 rounded-2xl" />
+              <div className="w-40 h-11 bg-gray-200 rounded-2xl" />
+              <div className="w-48 h-11 bg-gray-200 rounded-2xl" />
               <div className="flex flex-wrap gap-3">
-                <div className="w-24 h-11 bg-gray-200 rounded-2xl"></div>
-                <div className="w-24 h-11 bg-gray-200 rounded-2xl"></div>
+                <div className="w-24 h-11 bg-gray-200 rounded-2xl" />
+                <div className="w-24 h-11 bg-gray-200 rounded-2xl" />
               </div>
             </div>
           </div>
         </div>
-
-        {/* Table/Grid View Skeleton */}
         <div className="bg-white rounded-[22px] shadow-[0_4px_24px_rgba(15,23,42,0.035)] border border-slate-200/80 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-4 w-10">
-                    <div className="h-4 w-4 bg-gray-200 rounded animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4">
-                    <div className="h-3 bg-gray-200 rounded w-8 animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4">
-                    <div className="h-3 bg-gray-200 rounded w-24 animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4">
-                    <div className="h-3 bg-gray-200 rounded w-16 animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4">
-                    <div className="h-3 bg-gray-200 rounded w-12 animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4 text-center">
-                    <div className="h-3 bg-gray-200 rounded w-12 mx-auto animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4 text-right">
-                    <div className="h-3 bg-gray-200 rounded w-16 ml-auto animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4 text-center">
-                    <div className="h-3 bg-gray-200 rounded w-12 mx-auto animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4 text-center">
-                    <div className="h-3 bg-gray-200 rounded w-12 mx-auto animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4 text-center">
-                    <div className="h-3 bg-gray-200 rounded w-8 mx-auto animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4 text-center">
-                    <div className="h-3 bg-gray-200 rounded w-8 mx-auto animate-pulse"></div>
-                  </th>
+                  {[...Array(11)].map((_, i) => (
+                    <th key={i} className="px-4 py-4">
+                      <div className="h-3 bg-gray-200 rounded w-12 animate-pulse" />
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -646,9 +727,10 @@ const ProgramData = ({ userRole }) => {
     );
   }
 
+  // ==================== MAIN RENDER ====================
   return (
     <div className="min-h-screen bg-[#f5f7fb] p-0 text-slate-800">
-      {/* Loading Overlays */}
+      {/* Loading */}
       <AnimatePresence>
         {(loadingSave ||
           loadingDelete ||
@@ -662,15 +744,13 @@ const ProgramData = ({ userRole }) => {
                   ? "Menghapus program..."
                   : loadingBulkDelete
                     ? "Menghapus program massal..."
-                    : loadingExport
-                      ? "Mengekspor data..."
-                      : "Memproses..."
+                    : "Mengekspor data..."
             }
           />
         )}
       </AnimatePresence>
 
-      {/* Toast Notification */}
+      {/* Toast */}
       <AnimatePresence>
         {toast.show && (
           <motion.div
@@ -693,7 +773,7 @@ const ProgramData = ({ userRole }) => {
         )}
       </AnimatePresence>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirm */}
       <AnimatePresence>
         {showDeleteConfirm && programToDelete && (
           <motion.div
@@ -725,7 +805,6 @@ const ProgramData = ({ userRole }) => {
                     </p>
                   </div>
                 </div>
-
                 <div className="mb-6">
                   <p className="text-slate-600 mb-2">
                     Apakah Anda yakin ingin menghapus program berikut?
@@ -739,18 +818,14 @@ const ProgramData = ({ userRole }) => {
                     </p>
                   </div>
                 </div>
-
                 <div className="bg-amber-50 rounded-2xl p-3 mb-6">
                   <div className="flex items-start gap-2">
                     <FiInfo className="text-amber-600 text-sm mt-0.5" />
                     <p className="text-xs text-amber-700">
-                      Data akan dipindahkan ke sheet <strong>"Drop"</strong>{" "}
-                      dengan keterangan <strong>DROP</strong> dan timestamp.
-                      Data dapat dipulihkan kembali jika diperlukan.
+                      Data akan dipindahkan ke sheet <strong>"Drop"</strong>.
                     </p>
                   </div>
                 </div>
-
                 <div className="flex gap-3 justify-end">
                   <button
                     onClick={() => setShowDeleteConfirm(false)}
@@ -782,7 +857,7 @@ const ProgramData = ({ userRole }) => {
         )}
       </AnimatePresence>
 
-      {/* Header Section */}
+      {/* Header */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5 mb-6 rounded-[26px] bg-[#101b34] px-5 py-6 md:px-7 md:py-7 shadow-[0_16px_38px_rgba(16,27,52,.13)]">
           <div>
@@ -794,13 +869,11 @@ const ProgramData = ({ userRole }) => {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            {/* Tombol Grid/Table View */}
             <button
               onClick={() =>
                 setViewMode(viewMode === "table" ? "grid" : "table")
               }
               className="flex items-center gap-2 px-4 py-2 bg-white/10 text-white border border-white/20 rounded-2xl shadow-sm hover:bg-white/20 transition-all"
-              disabled={loading}
             >
               {viewMode === "table" ? (
                 <FiGrid size={18} />
@@ -811,19 +884,15 @@ const ProgramData = ({ userRole }) => {
                 {viewMode === "table" ? "Grid View" : "Table View"}
               </span>
             </button>
-
-            {/* Tombol Drop Data / Arsip (hanya untuk Admin) */}
             {userRole === "Admin" && (
               <button
-                onClick={() => (window.location.href = "/drop-data")}
+                onClick={() => (window.location.href = "/dashboard/drop-data")}
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-2xl shadow-sm hover:shadow-md transition-all"
               >
                 <FiArchive size={18} />
                 <span className="hidden sm:inline">Program Drop</span>
               </button>
             )}
-
-            {/* Tombol Hapus Massal */}
             {userRole === "Admin" && selectedPrograms.length > 0 && (
               <motion.button
                 initial={{ scale: 0.9 }}
@@ -839,13 +908,13 @@ const ProgramData = ({ userRole }) => {
           </div>
         </div>
 
-        {/* Stats Cards */}
+        {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
           <motion.div
             whileHover={{ y: -4 }}
             className="group relative bg-white rounded-[22px] border border-slate-200/80 shadow-[0_4px_24px_rgba(15,23,42,0.035)] hover:shadow-[0_12px_35px_rgba(15,23,42,0.09)] transition-all duration-300 overflow-hidden"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-indigo-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-indigo-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             <div className="relative p-5 md:p-6">
               <div className="flex items-start justify-between mb-4">
                 <div className="p-3 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 shadow-lg">
@@ -862,14 +931,13 @@ const ProgramData = ({ userRole }) => {
               </h3>
               <p className="text-xs text-slate-400">Semua program kerja</p>
             </div>
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300"></div>
           </motion.div>
 
           <motion.div
             whileHover={{ y: -4 }}
             className="group relative bg-white rounded-[22px] border border-slate-200/80 shadow-[0_4px_24px_rgba(15,23,42,0.035)] hover:shadow-[0_12px_35px_rgba(15,23,42,0.09)] transition-all duration-300 overflow-hidden"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 to-green-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 to-green-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             <div className="relative p-5 md:p-6">
               <div className="flex items-start justify-between mb-4">
                 <div className="p-3 rounded-2xl bg-gradient-to-br from-[#0f766e] to-[#0d9488] shadow-lg">
@@ -884,16 +952,15 @@ const ProgramData = ({ userRole }) => {
               <h3 className="text-slate-700 font-semibold mb-1">
                 Total Anggaran
               </h3>
-              <p className="text-xs text-slate-400">Keseluruhan anggaran</p>
+              <p className="text-xs text-slate-400">Material + Jasa</p>
             </div>
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-green-600 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300"></div>
           </motion.div>
 
           <motion.div
             whileHover={{ y: -4 }}
             className="group relative bg-white rounded-[22px] border border-slate-200/80 shadow-[0_4px_24px_rgba(15,23,42,0.035)] hover:shadow-[0_12px_35px_rgba(15,23,42,0.09)] transition-all duration-300 overflow-hidden"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-pink-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-pink-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             <div className="relative p-5 md:p-6">
               <div className="flex items-start justify-between mb-4">
                 <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg">
@@ -908,14 +975,13 @@ const ProgramData = ({ userRole }) => {
               <h3 className="text-slate-700 font-semibold mb-1">Tahun Aktif</h3>
               <p className="text-xs text-slate-400">Periode program</p>
             </div>
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 to-pink-600 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300"></div>
           </motion.div>
 
           <motion.div
             whileHover={{ y: -4 }}
             className="group relative bg-white rounded-[22px] border border-slate-200/80 shadow-[0_4px_24px_rgba(15,23,42,0.035)] hover:shadow-[0_12px_35px_rgba(15,23,42,0.09)] transition-all duration-300 overflow-hidden"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-orange-50 to-amber-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-orange-50 to-amber-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             <div className="relative p-5 md:p-6">
               <div className="flex items-start justify-between mb-4">
                 <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 shadow-lg">
@@ -932,25 +998,23 @@ const ProgramData = ({ userRole }) => {
               </h3>
               <p className="text-xs text-slate-400">Kategori program</p>
             </div>
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-amber-600 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300"></div>
           </motion.div>
         </div>
 
-        {/* Filters Bar */}
+        {/* Filters */}
         <div className="bg-white rounded-[22px] shadow-[0_4px_24px_rgba(15,23,42,0.035)] border border-slate-200/80 p-4">
           <div className="flex flex-col lg:flex-row gap-4">
             <div className="flex-1 relative">
               <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Cari program, kluster, tahun, sumber anggaran, atau bidang..."
+                placeholder="Cari program, kluster, tahun, kategori, aset, strategi..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
                   setCurrentPage(1);
                 }}
-                disabled={loading}
-                className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all disabled:opacity-50"
+                className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
               />
             </div>
             <select
@@ -959,8 +1023,7 @@ const ProgramData = ({ userRole }) => {
                 setFilterYear(e.target.value);
                 setCurrentPage(1);
               }}
-              disabled={loading}
-              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400 disabled:opacity-50"
+              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400"
             >
               <option value="all">Semua Tahun</option>
               {getYears
@@ -977,8 +1040,7 @@ const ProgramData = ({ userRole }) => {
                 setFilterCluster(e.target.value);
                 setCurrentPage(1);
               }}
-              disabled={loading}
-              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400 disabled:opacity-50"
+              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400"
             >
               <option value="all">Semua Kluster</option>
               {getClusters
@@ -992,15 +1054,14 @@ const ProgramData = ({ userRole }) => {
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={resetFilters}
-                disabled={loading}
-                className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-2xl hover:bg-slate-50 transition-all"
               >
-                <FiRefreshCw size={16} />{" "}
+                <FiRefreshCw size={16} />
                 <span className="hidden sm:inline">Reset</span>
               </button>
               <button
                 onClick={handleExport}
-                disabled={loadingExport || loading}
+                disabled={loadingExport}
                 className="flex items-center gap-2 px-4 py-2.5 border border-emerald-500 text-emerald-600 rounded-2xl hover:bg-emerald-50 transition-all disabled:opacity-50"
               >
                 {loadingExport ? (
@@ -1014,15 +1075,12 @@ const ProgramData = ({ userRole }) => {
                   </>
                 )}
               </button>
-              {
-                <button
-                  onClick={handleAdd}
-                  disabled={loading}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#1e4f91] to-[#2563eb] text-white rounded-2xl hover:shadow-lg transition-all disabled:opacity-50"
-                >
-                  <FiPlus size={18} /> <span>Tambah</span>
-                </button>
-              }
+              <button
+                onClick={handleAdd}
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#1e4f91] to-[#2563eb] text-white rounded-2xl hover:shadow-lg transition-all"
+              >
+                <FiPlus size={18} /> <span>Tambah</span>
+              </button>
             </div>
           </div>
           {(searchTerm || filterYear !== "all" || filterCluster !== "all") && (
@@ -1040,7 +1098,7 @@ const ProgramData = ({ userRole }) => {
         </div>
       </div>
 
-      {/* Main Content - Only show when not loading */}
+      {/* Content */}
       {filteredPrograms.length === 0 ? (
         <div className="bg-white rounded-[22px] p-12 text-center">
           <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1057,7 +1115,6 @@ const ProgramData = ({ userRole }) => {
           )}
         </div>
       ) : viewMode === "table" ? (
-        // Table View
         <div className="bg-white rounded-[22px] shadow-[0_4px_24px_rgba(15,23,42,0.035)] border border-slate-200/80 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -1085,25 +1142,22 @@ const ProgramData = ({ userRole }) => {
                     Program Kerja
                   </th>
                   <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Kluster
+                    Kategori
                   </th>
                   <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Sumber
+                    Aset
+                  </th>
+                  <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Harga Material
+                  </th>
+                  <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Harga Jasa
+                  </th>
+                  <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Total
                   </th>
                   <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Tahun
-                  </th>
-                  <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Anggaran
-                  </th>
-                  <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Resiko
-                  </th>
-                  <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Bidang
-                  </th>
-                  <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    File
                   </th>
                   <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Aksi
@@ -1148,16 +1202,39 @@ const ProgramData = ({ userRole }) => {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex px-2.5 py-1 text-xs font-medium rounded-full bg-sky-100 text-sky-800">
-                          {program.klusterProgram
-                            ?.split(" ")
-                            .slice(0, 2)
-                            .join(" ") || "-"}
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-lg ${getKategoriBadge(program.kategori)}`}
+                        >
+                          {program.kategori || "-"}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-sm font-medium text-slate-700">
-                          {program.sumberAnggaran || "-"}
+                        <div className="text-sm text-slate-700">
+                          {program.aset || "-"}
+                        </div>
+                        {program.descriptionAset && (
+                          <div className="text-xs text-slate-400 mt-0.5 line-clamp-1">
+                            {program.descriptionAset}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="text-xs text-blue-700 font-medium">
+                          {parseFloat(program.hargaMaterial) > 0
+                            ? formatCurrencyShort(program.hargaMaterial)
+                            : "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="text-xs text-purple-700 font-medium">
+                          {parseFloat(program.hargaJasa) > 0
+                            ? formatCurrencyShort(program.hargaJasa)
+                            : "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="text-sm font-bold text-emerald-600">
+                          {formatCurrencyShort(program.hargaTotal)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -1167,47 +1244,11 @@ const ProgramData = ({ userRole }) => {
                           {program.tahun || "-"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-bold text-emerald-600">
-                          {formatCurrencyShort(program.hargaTotal)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {program.levelResikoInherent && (
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${getRiskColor(program.levelResikoInherent)}`}
-                          >
-                            {getRiskIcon(program.levelResikoInherent)}
-                            {program.levelResikoInherent}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="text-sm text-slate-600">
-                          {program.bidang || "-"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {program.file ? (
-                          <a
-                            href={program.file}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-sky-700 hover:text-sky-800 text-sm"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <FiExternalLink size={14} /> Lihat
-                          </a>
-                        ) : (
-                          <span className="text-slate-400 text-sm">-</span>
-                        )}
-                      </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex gap-1 justify-center">
                           <button
                             onClick={() => handleViewDetail(program)}
-                            disabled={loading}
-                            className="p-1.5 text-slate-400 hover:text-sky-700 hover:bg-sky-50 rounded-lg transition disabled:opacity-50"
+                            className="p-1.5 text-slate-400 hover:text-sky-700 hover:bg-sky-50 rounded-lg transition"
                             title="Detail"
                           >
                             <FiEye size={15} />
@@ -1246,7 +1287,6 @@ const ProgramData = ({ userRole }) => {
             </table>
           </div>
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-slate-100 bg-slate-50">
               <div className="text-sm text-slate-500">
@@ -1257,7 +1297,7 @@ const ProgramData = ({ userRole }) => {
               <div className="flex gap-2">
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1 || loading}
+                  disabled={currentPage === 1}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition"
                 >
                   <FiChevronLeft size={16} /> Prev
@@ -1265,26 +1305,21 @@ const ProgramData = ({ userRole }) => {
                 <div className="flex gap-1">
                   {[...Array(Math.min(5, totalPages))].map((_, i) => {
                     let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
+                    if (totalPages <= 5) pageNum = i + 1;
+                    else if (currentPage <= 3) pageNum = i + 1;
+                    else if (currentPage >= totalPages - 2)
                       pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
+                    else pageNum = currentPage - 2 + i;
                     if (pageNum < 1 || pageNum > totalPages) return null;
                     return (
                       <button
                         key={`page-${pageNum}`}
                         onClick={() => setCurrentPage(pageNum)}
-                        disabled={loading}
                         className={`w-9 h-9 text-sm rounded-lg transition ${
                           currentPage === pageNum
                             ? "bg-blue-600 text-white shadow-sm"
                             : "hover:bg-gray-200"
-                        } disabled:opacity-50`}
+                        }`}
                       >
                         {pageNum}
                       </button>
@@ -1295,7 +1330,7 @@ const ProgramData = ({ userRole }) => {
                   onClick={() =>
                     setCurrentPage((p) => Math.min(totalPages, p + 1))
                   }
-                  disabled={currentPage === totalPages || loading}
+                  disabled={currentPage === totalPages}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white transition"
                 >
                   Next <FiChevronRight size={16} />
@@ -1352,20 +1387,21 @@ const ProgramData = ({ userRole }) => {
                     </p>
                   )}
                   <div className="flex flex-wrap gap-2 mb-3">
-                    <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700">
-                      {program.klusterProgram || "-"}
+                    <span
+                      className={`inline-flex px-2 py-1 text-xs rounded-lg ${getKategoriBadge(program.kategori)}`}
+                    >
+                      {program.kategori || "-"}
                     </span>
                     <span
                       className={`inline-flex px-2 py-1 text-xs rounded-lg ${getYearBadgeColor(program.tahun)}`}
                     >
                       {program.tahun || "-"}
                     </span>
-                    <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-emerald-50 text-emerald-600">
-                      {program.sumberAnggaran || "-"}
-                    </span>
-                    <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-purple-50 text-purple-600">
-                      {program.bidang || "-"}
-                    </span>
+                    {program.aset && (
+                      <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-amber-50 text-amber-700">
+                        {program.aset}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                     <span className="text-sm font-bold text-emerald-600">
@@ -1374,8 +1410,7 @@ const ProgramData = ({ userRole }) => {
                     <div className="flex gap-1">
                       <button
                         onClick={() => handleViewDetail(program)}
-                        disabled={loading}
-                        className="p-1.5 text-slate-400 hover:text-sky-700 rounded-lg transition disabled:opacity-50"
+                        className="p-1.5 text-slate-400 hover:text-sky-700 rounded-lg transition"
                         title="Detail"
                       >
                         <FiEye size={14} />
@@ -1411,7 +1446,7 @@ const ProgramData = ({ userRole }) => {
         </div>
       )}
 
-      {/* Pagination for Grid View */}
+      {/* Pagination Grid */}
       {viewMode === "grid" && totalPages > 1 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 px-6 py-4 bg-white rounded-[22px] shadow-[0_4px_24px_rgba(15,23,42,0.035)] border border-slate-200/80">
           <div className="text-sm text-slate-500">
@@ -1422,7 +1457,7 @@ const ProgramData = ({ userRole }) => {
           <div className="flex gap-2">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1 || loading}
+              disabled={currentPage === 1}
               className="flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition"
             >
               <FiChevronLeft size={16} /> Prev
@@ -1430,26 +1465,21 @@ const ProgramData = ({ userRole }) => {
             <div className="flex gap-1">
               {[...Array(Math.min(5, totalPages))].map((_, i) => {
                 let pageNum;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
+                if (totalPages <= 5) pageNum = i + 1;
+                else if (currentPage <= 3) pageNum = i + 1;
+                else if (currentPage >= totalPages - 2)
                   pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
+                else pageNum = currentPage - 2 + i;
                 if (pageNum < 1 || pageNum > totalPages) return null;
                 return (
                   <button
                     key={`page-${pageNum}`}
                     onClick={() => setCurrentPage(pageNum)}
-                    disabled={loading}
                     className={`w-9 h-9 text-sm rounded-lg transition ${
                       currentPage === pageNum
                         ? "bg-blue-600 text-white shadow-sm"
                         : "hover:bg-gray-100"
-                    } disabled:opacity-50`}
+                    }`}
                   >
                     {pageNum}
                   </button>
@@ -1458,7 +1488,7 @@ const ProgramData = ({ userRole }) => {
             </div>
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages || loading}
+              disabled={currentPage === totalPages}
               className="flex items-center gap-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition"
             >
               Next <FiChevronRight size={16} />
@@ -1467,7 +1497,7 @@ const ProgramData = ({ userRole }) => {
         </div>
       )}
 
-      {/* Bulk Delete Modal */}
+      {/* Bulk Delete */}
       <AnimatePresence>
         {showBulkDelete && (
           <motion.div
@@ -1499,7 +1529,6 @@ const ProgramData = ({ userRole }) => {
                     </p>
                   </div>
                 </div>
-
                 <div className="bg-amber-50 rounded-2xl p-3 mb-6">
                   <div className="flex items-start gap-2">
                     <FiInfo className="text-amber-600 text-sm mt-0.5" />
@@ -1509,7 +1538,6 @@ const ProgramData = ({ userRole }) => {
                     </p>
                   </div>
                 </div>
-
                 <p className="text-slate-600 mb-6">
                   Tindakan ini tidak dapat dibatalkan. Apakah Anda yakin?
                 </p>
@@ -1564,7 +1592,7 @@ const ProgramData = ({ userRole }) => {
               className="bg-white rounded-[22px] max-w-3xl w-full max-h-[85vh] overflow-y-auto shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 bg-gradient-to-r from-[#1e4f91] to-[#2563eb] px-6 py-4 flex justify-between items-center">
+              <div className="sticky top-0 bg-gradient-to-r from-[#1e4f91] to-[#2563eb] px-6 py-4 flex justify-between items-center z-10">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center">
                     <FiInfo className="text-white text-xl" />
@@ -1601,12 +1629,11 @@ const ProgramData = ({ userRole }) => {
                           {selectedProgram.tahun}
                         </span>
                       )}
-                      {selectedProgram.levelResikoInherent && (
+                      {selectedProgram.kategori && (
                         <span
-                          className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-full ${getRiskColor(selectedProgram.levelResikoInherent)}`}
+                          className={`inline-flex px-3 py-1.5 text-sm font-bold rounded-lg ${getKategoriBadge(selectedProgram.kategori)}`}
                         >
-                          {getRiskIcon(selectedProgram.levelResikoInherent)}
-                          {selectedProgram.levelResikoInherent}
+                          {selectedProgram.kategori}
                         </span>
                       )}
                     </div>
@@ -1689,26 +1716,11 @@ const ProgramData = ({ userRole }) => {
                   </div>
                   <div className="bg-slate-50 rounded-2xl p-3">
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      SAT
+                      SAT / VOL
                     </label>
                     <p className="font-medium text-slate-700 mt-1">
-                      {selectedProgram.sat || "-"}
-                    </p>
-                  </div>
-                  <div className="bg-slate-50 rounded-2xl p-3">
-                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      VOL
-                    </label>
-                    <p className="font-medium text-slate-700 mt-1">
+                      {selectedProgram.sat || "-"} /{" "}
                       {selectedProgram.vol || "-"}
-                    </p>
-                  </div>
-                  <div className="bg-slate-50 rounded-2xl p-3">
-                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Harga Total
-                    </label>
-                    <p className="font-bold text-emerald-600 mt-1 text-lg">
-                      {formatCurrency(selectedProgram.hargaTotal)}
                     </p>
                   </div>
                   <div className="bg-slate-50 rounded-2xl p-3">
@@ -1717,6 +1729,73 @@ const ProgramData = ({ userRole }) => {
                     </label>
                     <p className="font-medium text-slate-700 mt-1">
                       {selectedProgram.bidang || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-2xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Harga Material
+                    </label>
+                    <p className="font-bold text-blue-600 mt-1">
+                      {parseFloat(selectedProgram.hargaMaterial) > 0
+                        ? formatCurrency(selectedProgram.hargaMaterial)
+                        : "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-2xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Harga Jasa
+                    </label>
+                    <p className="font-bold text-purple-600 mt-1">
+                      {parseFloat(selectedProgram.hargaJasa) > 0
+                        ? formatCurrency(selectedProgram.hargaJasa)
+                        : "-"}
+                    </p>
+                  </div>
+                  <div className="bg-emerald-50 rounded-2xl p-3 md:col-span-2">
+                    <label className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">
+                      Harga Total
+                    </label>
+                    <p className="font-bold text-emerald-700 mt-1 text-xl">
+                      {formatCurrency(selectedProgram.hargaTotal)}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-2xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      TKDN
+                    </label>
+                    <p className="font-medium text-slate-700 mt-1">
+                      {selectedProgram.tkdn || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-2xl p-3 md:col-span-2">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Strategis RJPU
+                    </label>
+                    <p className="font-medium text-slate-700 mt-1">
+                      {selectedProgram.strategisRjpu
+                        ? `${selectedProgram.strategisRjpu} — ${
+                            strategis.find(
+                              (s) =>
+                                s.kodeAwal === selectedProgram.strategisRjpu,
+                            )?.strategicInitiatives || ""
+                          }`
+                        : "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-2xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Aset
+                    </label>
+                    <p className="font-medium text-slate-700 mt-1">
+                      {selectedProgram.aset || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-2xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Deskripsi Aset
+                    </label>
+                    <p className="font-medium text-slate-700 mt-1">
+                      {selectedProgram.descriptionAset || "-"}
                     </p>
                   </div>
                 </div>
@@ -1805,7 +1884,7 @@ const ProgramData = ({ userRole }) => {
               className="bg-white rounded-[22px] max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 bg-gradient-to-r from-[#1e4f91] to-[#2563eb] px-6 py-4 flex justify-between items-center">
+              <div className="sticky top-0 bg-gradient-to-r from-[#1e4f91] to-[#2563eb] px-6 py-4 flex justify-between items-center z-10">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center">
                     {editingProgram ? (
@@ -1829,6 +1908,7 @@ const ProgramData = ({ userRole }) => {
 
               <div className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Program Kerja */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Program Kerja <span className="text-red-500">*</span>
@@ -1848,6 +1928,7 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
+                  {/* Alasan Program */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Alasan Program
@@ -1867,6 +1948,7 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
+                  {/* Kluster */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Kluster Program
@@ -1891,6 +1973,7 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
+                  {/* OEM */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       OEM / NON OEM
@@ -1912,6 +1995,7 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
+                  {/* Dasar Input */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Dasar Input Program
@@ -1936,6 +2020,7 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
+                  {/* Sasaran RJPP */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Sasaran RJPP
@@ -1960,6 +2045,7 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
+                  {/* Sumber Anggaran */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Sumber Anggaran
@@ -1984,6 +2070,7 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
+                  {/* EST Levering */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       EST Levering
@@ -2003,6 +2090,7 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
+                  {/* Level Resiko Inherent */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Level Resiko Inherent
@@ -2027,6 +2115,7 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
+                  {/* Level Risiko Residual */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Level Risiko Residual
@@ -2051,6 +2140,7 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
+                  {/* SAT */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       SAT
@@ -2067,6 +2157,7 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
+                  {/* VOL */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       VOL
@@ -2083,6 +2174,7 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
+                  {/* Tahun */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Tahun <span className="text-red-500">*</span>
@@ -2099,22 +2191,7 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-semibold mb-1 text-slate-700">
-                      Harga Total (Rp)
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.hargaTotal || ""}
-                      onChange={(e) =>
-                        setFormData({ ...formData, hargaTotal: e.target.value })
-                      }
-                      disabled={loadingSave}
-                      className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
-                      placeholder="0"
-                    />
-                  </div>
-
+                  {/* Bidang */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Bidang
@@ -2136,6 +2213,232 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
+                  {/* KATEGORI */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold mb-1 text-slate-700">
+                      Kategori <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {kategoriOptions.map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => handleKategoriChange(opt)}
+                          disabled={loadingSave}
+                          className={`px-3 py-2 rounded-2xl border text-sm font-medium transition ${
+                            formData.kategori === opt
+                              ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                          } disabled:opacity-50`}
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* HARGA MATERIAL */}
+                  {(formData.kategori === "Material" ||
+                    formData.kategori === "Material & Jasa") && (
+                    <div>
+                      <label className="block text-sm font-semibold mb-1 text-blue-700">
+                        Harga Material (Rp){" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.hargaMaterial || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            hargaMaterial: e.target.value,
+                          })
+                        }
+                        disabled={loadingSave}
+                        className="w-full px-4 py-2.5 border border-blue-200 rounded-2xl focus:ring-2 focus:ring-blue-400 transition disabled:bg-gray-100 disabled:opacity-50"
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
+
+                  {/* HARGA JASA */}
+                  {(formData.kategori === "Jasa" ||
+                    formData.kategori === "Material & Jasa") && (
+                    <div>
+                      <label className="block text-sm font-semibold mb-1 text-purple-700">
+                        Harga Jasa (Rp) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        value={formData.hargaJasa || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            hargaJasa: e.target.value,
+                          })
+                        }
+                        disabled={loadingSave}
+                        className="w-full px-4 py-2.5 border border-purple-200 rounded-2xl focus:ring-2 focus:ring-purple-400 transition disabled:bg-gray-100 disabled:opacity-50"
+                        placeholder="0"
+                      />
+                    </div>
+                  )}
+
+                  {/* HARGA TOTAL */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold mb-1 text-slate-700">
+                      Harga Total (Otomatis)
+                    </label>
+                    <div className="w-full px-4 py-2.5 border border-emerald-200 bg-emerald-50 rounded-2xl text-emerald-800 font-bold">
+                      {formatCurrency(computedHargaTotal)}
+                    </div>
+                  </div>
+
+                  {/* TKDN */}
+                  <div>
+                    <label className="block text-sm font-semibold mb-1 text-slate-700">
+                      TKDN
+                    </label>
+                    <select
+                      value={formData.tkdn || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, tkdn: e.target.value })
+                      }
+                      disabled={loadingSave}
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
+                    >
+                      <option value="">Pilih TKDN</option>
+                      {tkdnOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* STRATEGIS RJPU */}
+                  <div>
+                    <label className="block text-sm font-semibold mb-1 text-slate-700">
+                      Strategis RJPU <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={formData.strategisRjpu || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          strategisRjpu: e.target.value,
+                        })
+                      }
+                      disabled={loadingSave || loadingStrategis}
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
+                    >
+                      <option value="">
+                        {loadingStrategis
+                          ? "Memuat strategi..."
+                          : "Pilih Strategi RJPU"}
+                      </option>
+                      {strategis.map((s) => (
+                        <option key={s.kodeAwal} value={s.kodeAwal}>
+                          {s.kodeAwal} — {s.strategicInitiatives}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Menentukan nomor program: MT-P2.3-001
+                    </p>
+                  </div>
+
+                  {/* ASET (searchable) */}
+                  <div className="md:col-span-2 relative">
+                    <label className="block text-sm font-semibold mb-1 text-slate-700">
+                      Aset{" "}
+                      <span className="text-xs font-normal text-slate-400">
+                        (bisa cari berdasarkan nama)
+                      </span>
+                    </label>
+
+                    {formData.kategori === "Jasa" ? (
+                      <input
+                        type="text"
+                        value="Jasa"
+                        disabled
+                        className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50 rounded-2xl text-slate-600 cursor-not-allowed"
+                      />
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={
+                            showAssetDropdown
+                              ? assetSearch
+                              : formData.aset || ""
+                          }
+                          onChange={(e) => {
+                            setAssetSearch(e.target.value);
+                            setShowAssetDropdown(true);
+                          }}
+                          onFocus={() => {
+                            setAssetSearch("");
+                            setShowAssetDropdown(true);
+                          }}
+                          onBlur={() => {
+                            setTimeout(() => setShowAssetDropdown(false), 200);
+                          }}
+                          disabled={loadingSave || loadingAssets}
+                          className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
+                          placeholder="Ketik nama aset untuk mencari..."
+                        />
+                        {showAssetDropdown && (
+                          <div className="absolute z-20 mt-1 w-full max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-lg">
+                            {filteredAssets.length === 0 ? (
+                              <div className="px-4 py-3 text-sm text-slate-400">
+                                Tidak ditemukan aset
+                              </div>
+                            ) : (
+                              filteredAssets.map((a) => (
+                                <button
+                                  key={a.namaAset}
+                                  type="button"
+                                  onClick={() => {
+                                    handleAsetChange(a.namaAset);
+                                    setShowAssetDropdown(false);
+                                    setAssetSearch("");
+                                  }}
+                                  className="w-full text-left px-4 py-2 hover:bg-sky-50 transition border-b border-slate-100 last:border-0"
+                                >
+                                  <div className="font-medium text-slate-800 text-sm">
+                                    {a.namaAset}
+                                  </div>
+                                  {a.deskripsi && (
+                                    <div className="text-xs text-slate-400 line-clamp-1">
+                                      {a.deskripsi}
+                                    </div>
+                                  )}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* DESCRIPTION ASET */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold mb-1 text-slate-700">
+                      Deskripsi Aset
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.descriptionAset || ""}
+                      readOnly
+                      disabled
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl bg-slate-50 text-slate-600 cursor-not-allowed"
+                      placeholder="Terisi otomatis dari aset"
+                    />
+                  </div>
+
+                  {/* FILE */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       File Link (Google Drive)
@@ -2152,6 +2455,7 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
+                  {/* KETERANGAN */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Keterangan

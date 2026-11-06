@@ -1,59 +1,10 @@
-// DisbursementSheetService.js
+// api/DisbursementSheetService.js
 import sheetsService from "./googleSheetService";
 import loginService from "./loginSheetService";
 
 class DisbursementSheetService {
   constructor() {
     this.sheetName = "Disbursement";
-    this.columns = {
-      NO: 0,
-      PROGRAM_ID: 1, // Referensi ke NO di sheet Data
-      PROGRAM_NAME: 2,
-      KLUSTER: 3,
-      BIDANG: 4,
-      TAHUN: 5,
-      EST_LEVERING: 6, // Estimasi levering dari sheet Data (dalam bulan)
-
-      // Material Disbursement
-      MATERIAL_VENDOR: 7,
-      MATERIAL_PO_DATE: 8,
-      MATERIAL_DELIVERY_PLAN: 9, // Rencana pengiriman material
-      MATERIAL_ACTUAL_DELIVERY: 10, // Realisasi pengiriman material
-      MATERIAL_AMOUNT: 11,
-      MATERIAL_STATUS: 12, // Planned, In Progress, Completed, Delayed
-
-      // Service/Jasa Disbursement
-      SERVICE_VENDOR: 13,
-      SERVICE_PO_DATE: 14,
-      SERVICE_START_PLAN: 15, // Rencana mulai jasa
-      SERVICE_START_ACTUAL: 16, // Realisasi mulai jasa
-      SERVICE_END_PLAN: 17, // Rencana selesai jasa
-      SERVICE_END_ACTUAL: 18, // Realisasi selesai jasa
-      SERVICE_AMOUNT: 19,
-      SERVICE_STATUS: 20, // Planned, In Progress, Completed, Delayed
-
-      // Equipment Levering
-      EQUIPMENT_VENDOR: 21,
-      EQUIPMENT_LEVERING_PLAN: 22, // Rencana datang peralatan
-      EQUIPMENT_LEVERING_ACTUAL: 23, // Realisasi datang peralatan
-      EQUIPMENT_STATUS: 24, // Not Yet, On Progress, Arrived, Delayed
-
-      // Timeline Execution (dalam bulan)
-      EXECUTION_START_PLAN: 25,
-      EXECUTION_START_ACTUAL: 26,
-      EXECUTION_END_PLAN: 27,
-      EXECUTION_END_ACTUAL: 28,
-
-      // Overall Status
-      OVERALL_STATUS: 29, // Not Started, Planning, On Progress, Completed, Delayed
-      PROGRESS_PERCENTAGE: 30, // 0-100%
-
-      // Notes
-      NOTES: 31,
-      LAST_UPDATED: 32,
-      UPDATED_BY: 33,
-    };
-
     this.columnNames = [
       "NO",
       "PROGRAM ID",
@@ -94,37 +45,21 @@ class DisbursementSheetService {
 
   async init() {
     await sheetsService.init();
-    await this.ensureHeaders();
-  }
-
-  async ensureHeaders() {
-    try {
-      const sheetExists = await sheetsService.sheetExists(this.sheetName);
-      if (!sheetExists) {
-        await sheetsService.writeData(`${this.sheetName}!A1:AG1`, [
-          this.columnNames,
-        ]);
-        console.log("✅ Disbursement sheet created with headers");
-      }
-    } catch (error) {
-      console.error("Error ensuring disbursement headers:", error);
+    const sheetExists = await sheetsService.sheetExists(this.sheetName);
+    if (!sheetExists) {
+      await sheetsService.writeData(`${this.sheetName}!A1:AH1`, [
+        this.columnNames,
+      ]);
+      console.log("✅ Disbursement sheet created with headers");
     }
   }
 
-  // Get all disbursement data
   async getAllDisbursement() {
     await this.init();
     try {
-      const data = await sheetsService.getAllData(this.sheetName, "A:AG");
-      const processedData = [];
-      const startIndex = data.length > 0 && data[0]["NO"] === "NO" ? 1 : 0;
-
-      for (let i = startIndex; i < data.length; i++) {
-        const row = data[i];
-        if (!row["PROGRAM ID"] || row["PROGRAM ID"].toString().trim() === "")
-          continue;
-
-        processedData.push({
+      const data = await sheetsService.getAllData(this.sheetName, "A:AH");
+      return data
+        .map((row, i) => ({
           id: i,
           no: row["NO"] || "",
           programId: row["PROGRAM ID"] || "",
@@ -132,13 +67,13 @@ class DisbursementSheetService {
           kluster: row["KLUSTER"] || "",
           bidang: row["BIDANG"] || "",
           tahun: row["TAHUN"] || "",
-          estLevering: row["EST LEVERING (Bulan)"] || "",
+          estLevering: row["EST LEVERING (Bulan)"] || "0",
 
           materialVendor: row["MATERIAL VENDOR"] || "",
           materialPoDate: row["MATERIAL PO DATE"] || "",
           materialDeliveryPlan: row["MATERIAL DELIVERY PLAN"] || "",
           materialActualDelivery: row["MATERIAL ACTUAL DELIVERY"] || "",
-          materialAmount: row["MATERIAL AMOUNT"] || "",
+          materialAmount: parseFloat(row["MATERIAL AMOUNT"]) || 0,
           materialStatus: row["MATERIAL STATUS"] || "Planned",
 
           serviceVendor: row["SERVICE VENDOR"] || "",
@@ -147,7 +82,7 @@ class DisbursementSheetService {
           serviceStartActual: row["SERVICE START ACTUAL"] || "",
           serviceEndPlan: row["SERVICE END PLAN"] || "",
           serviceEndActual: row["SERVICE END ACTUAL"] || "",
-          serviceAmount: row["SERVICE AMOUNT"] || "",
+          serviceAmount: parseFloat(row["SERVICE AMOUNT"]) || 0,
           serviceStatus: row["SERVICE STATUS"] || "Planned",
 
           equipmentVendor: row["EQUIPMENT VENDOR"] || "",
@@ -162,92 +97,68 @@ class DisbursementSheetService {
 
           overallStatus: row["OVERALL STATUS"] || "Not Started",
           progressPercentage: parseInt(row["PROGRESS %"]) || 0,
-
           notes: row["NOTES"] || "",
           lastUpdated: row["LAST UPDATED"] || "",
           updatedBy: row["UPDATED BY"] || "",
-        });
-      }
-      return processedData;
+        }))
+        .filter((d) => d.programId && d.programId.trim() !== "");
     } catch (error) {
       console.error("Error getting disbursement data:", error);
       return [];
     }
   }
 
-  // Create disbursement record from program data
   async createFromProgram(programData) {
     await this.init();
 
-    const existing = await this.getByProgramId(programData.no);
-    if (existing) {
-      return {
-        success: false,
-        message: "Disbursement record already exists for this program",
-      };
-    }
-
     try {
+      // PERBAIKAN: Tambahkan 'await' sebelum getAllDisbursement()
       const allData = await this.getAllDisbursement();
+
+      const existing = allData.find((d) => d.programId === programData.no);
+      if (existing) {
+        return {
+          success: false,
+          message: "Disbursement sudah ada untuk program ini",
+        };
+      }
+
       const newNo = (allData.length + 1).toString().padStart(3, "0");
 
-      const newRow = [
-        newNo,
-        programData.no,
-        programData.programKerja,
-        programData.klusterProgram,
-        programData.bidang,
-        programData.tahun,
-        programData.estLevering || "0",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "Planned",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "Planned",
-        "",
-        "",
-        "",
-        "Not Yet",
-        "",
-        "",
-        "",
-        "",
-        "Not Started",
-        "0",
-        "",
-        new Date().toLocaleString("id-ID"),
-        loginService.getCurrentUser()?.nama || "System",
-      ];
+      // Buat array 34 kolom (A sampai AH)
+      const newRow = Array(34).fill("");
+      newRow[0] = newNo;
+      newRow[1] = programData.no;
+      newRow[2] = programData.programKerja;
+      newRow[3] = programData.klusterProgram;
+      newRow[4] = programData.bidang;
+      newRow[5] = programData.tahun;
+      newRow[6] = programData.estLevering || "0";
+
+      newRow[12] = "Planned"; // Material Status
+      newRow[20] = "Planned"; // Service Status
+      newRow[24] = "Not Yet"; // Equipment Status
+      newRow[29] = "Not Started"; // Overall Status
+      newRow[30] = 0; // Progress
+      newRow[32] = new Date().toLocaleString("id-ID");
+      newRow[33] = loginService.getCurrentUser()?.nama || "System";
 
       const rowCount = await sheetsService.getRowCount(this.sheetName);
-      const range = `${this.sheetName}!A${rowCount + 2}:AG${rowCount + 2}`;
-      await sheetsService.writeData(range, [newRow]);
+      await sheetsService.writeData(
+        `${this.sheetName}!A${rowCount + 2}:AH${rowCount + 2}`,
+        [newRow],
+      );
 
-      return {
-        success: true,
-        message: "Disbursement record created",
-        no: newNo,
-      };
+      return { success: true, message: "Disbursement created", no: newNo };
     } catch (error) {
+      console.error("Error createFromProgram:", error);
       return { success: false, message: error.message };
     }
   }
 
-  async getByProgramId(programId) {
-    const all = await this.getAllDisbursement();
-    return all.find((item) => item.programId === programId);
-  }
-
   async updateDisbursement(programId, updateData) {
-    const allDataRaw = await sheetsService.getRawData(this.sheetName, "A:AG");
+    await this.init();
+    const allDataRaw = await sheetsService.getRawData(this.sheetName, "A:AH");
     let rowIndex = -1;
 
     for (let i = 1; i < allDataRaw.length; i++) {
@@ -262,8 +173,8 @@ class DisbursementSheetService {
     try {
       const currentRow = allDataRaw[rowIndex];
       const updatedRow = [...currentRow];
+      while (updatedRow.length < 34) updatedRow.push("");
 
-      // Update based on field mapping
       const fieldMap = {
         materialVendor: 7,
         materialPoDate: 8,
@@ -294,47 +205,36 @@ class DisbursementSheetService {
 
       for (const [field, index] of Object.entries(fieldMap)) {
         if (updateData[field] !== undefined) {
-          updatedRow[index] = updateData[field];
+          if (
+            ["materialAmount", "serviceAmount", "progressPercentage"].includes(
+              field,
+            )
+          ) {
+            updatedRow[index] = isNaN(parseFloat(updateData[field]))
+              ? 0
+              : parseFloat(updateData[field]);
+          } else {
+            updatedRow[index] =
+              updateData[field] === null ? "" : String(updateData[field]);
+          }
         }
       }
 
       updatedRow[32] = new Date().toLocaleString("id-ID");
       updatedRow[33] = loginService.getCurrentUser()?.nama || "System";
 
-      const sheetRow = rowIndex + 1;
-      const range = `${this.sheetName}!A${sheetRow}:AG${sheetRow}`;
-      await sheetsService.writeData(range, [updatedRow]);
+      const result = await sheetsService.writeData(
+        `${this.sheetName}!A${rowIndex + 1}:AH${rowIndex + 1}`,
+        [updatedRow],
+      );
 
-      return { success: true, message: "Disbursement updated successfully" };
+      if (!result.success) throw new Error("Gagal menulis ke Google Sheets");
+
+      return { success: true, message: "Data updated" };
     } catch (error) {
+      console.error("Error updateDisbursement:", error);
       return { success: false, message: error.message };
     }
-  }
-
-  async getSummary() {
-    const all = await this.getAllDisbursement();
-    return {
-      total: all.length,
-      byStatus: {
-        notStarted: all.filter((d) => d.overallStatus === "Not Started").length,
-        planning: all.filter((d) => d.overallStatus === "Planning").length,
-        onProgress: all.filter((d) => d.overallStatus === "On Progress").length,
-        completed: all.filter((d) => d.overallStatus === "Completed").length,
-        delayed: all.filter((d) => d.overallStatus === "Delayed").length,
-      },
-      avgProgress: Math.round(
-        all.reduce((sum, d) => sum + d.progressPercentage, 0) /
-          (all.length || 1),
-      ),
-      totalMaterialAmount: all.reduce(
-        (sum, d) => sum + (parseFloat(d.materialAmount) || 0),
-        0,
-      ),
-      totalServiceAmount: all.reduce(
-        (sum, d) => sum + (parseFloat(d.serviceAmount) || 0),
-        0,
-      ),
-    };
   }
 }
 

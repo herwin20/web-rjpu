@@ -18,15 +18,9 @@ import {
   FiTrendingUp,
   FiPieChart,
   FiBarChart2,
-  FiDownload,
-  FiPlus,
   FiChevronLeft,
   FiChevronRight,
-  FiEye,
   FiInfo,
-  FiUser,
-  FiShoppingCart,
-  FiBriefcase,
   FiPlusCircle,
 } from "react-icons/fi";
 import { motion, AnimatePresence } from "framer-motion";
@@ -38,18 +32,13 @@ import {
   Cell,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
-  LineChart,
-  Line,
 } from "recharts";
 import dataSheet from "../../api/dataSheetService";
 import disbursementService from "../../api/disbursementSheetService";
 
 const Disbursement = ({ userRole }) => {
-  // Tambahkan props userRole
   const [programs, setPrograms] = useState([]);
   const [disbursements, setDisbursements] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,10 +53,7 @@ const Disbursement = ({ userRole }) => {
   const [selectedProgramsToCreate, setSelectedProgramsToCreate] = useState([]);
   const itemsPerPage = 10;
 
-  // Cek apakah user adalah Admin
   const isAdmin = userRole === "Admin";
-
-  console.log("User Role :" + userRole);
 
   useEffect(() => {
     loadData();
@@ -83,7 +69,6 @@ const Disbursement = ({ userRole }) => {
     try {
       const allPrograms = await dataSheet.getAllData();
       setPrograms(allPrograms);
-
       const allDisbursements = await disbursementService.getAllDisbursement();
       setDisbursements(allDisbursements);
     } catch (error) {
@@ -93,16 +78,8 @@ const Disbursement = ({ userRole }) => {
     }
   };
 
-  // Handle create new disbursement record (hanya untuk Admin)
   const handleCreateDisbursement = async () => {
-    if (!isAdmin) {
-      showToast(
-        "Akses ditolak. Hanya Admin yang dapat membuat disbursement",
-        "error",
-      );
-      return;
-    }
-
+    if (!isAdmin) return;
     if (selectedProgramsToCreate.length === 0) {
       showToast("Pilih minimal satu program", "error");
       return;
@@ -124,11 +101,8 @@ const Disbursement = ({ userRole }) => {
           parseInt(program.estLevering) > 0
         ) {
           const result = await disbursementService.createFromProgram(program);
-          if (result.success) {
-            successCount++;
-          } else {
-            failCount++;
-          }
+          if (result.success) successCount++;
+          else failCount++;
         } else if (existing) {
           successCount++;
         } else if (!program.estLevering || parseInt(program.estLevering) <= 0) {
@@ -142,7 +116,7 @@ const Disbursement = ({ userRole }) => {
 
       if (successCount > 0) {
         showToast(
-          `${successCount} program berhasil ditambahkan ke disbursement${failCount > 0 ? `, ${failCount} gagal` : ""}`,
+          `${successCount} program berhasil ditambahkan${failCount > 0 ? `, ${failCount} gagal` : ""}`,
           "success",
         );
       } else {
@@ -155,64 +129,109 @@ const Disbursement = ({ userRole }) => {
     }
   };
 
+  // ================= PERBAIKAN HANDLE EDIT =================
   const handleEdit = (disbursement) => {
     setSelectedProgram(programs.find((p) => p.no === disbursement.programId));
+
+    // Inisialisasi state dengan aman. Jika kosong, pastikan string "" atau 0.
     setEditData({
-      ...disbursement,
+      programId: disbursement.programId,
+
+      // Material
+      materialVendor: disbursement.materialVendor || "",
+      materialPoDate: disbursement.materialPoDate || "",
       materialDeliveryPlan: disbursement.materialDeliveryPlan || "",
       materialActualDelivery: disbursement.materialActualDelivery || "",
+      materialAmount:
+        disbursement.materialAmount !== "" ? disbursement.materialAmount : "",
+      materialStatus: disbursement.materialStatus || "Planned",
+
+      // Jasa
+      serviceVendor: disbursement.serviceVendor || "",
+      servicePoDate: disbursement.servicePoDate || "",
       serviceStartPlan: disbursement.serviceStartPlan || "",
       serviceStartActual: disbursement.serviceStartActual || "",
       serviceEndPlan: disbursement.serviceEndPlan || "",
       serviceEndActual: disbursement.serviceEndActual || "",
+      serviceAmount:
+        disbursement.serviceAmount !== "" ? disbursement.serviceAmount : "",
+      serviceStatus: disbursement.serviceStatus || "Planned",
+
+      // Equipment
+      equipmentVendor: disbursement.equipmentVendor || "",
       equipmentLeveringPlan: disbursement.equipmentLeveringPlan || "",
       equipmentLeveringActual: disbursement.equipmentLeveringActual || "",
+      equipmentStatus: disbursement.equipmentStatus || "Not Yet",
+
+      // Timeline
       executionStartPlan: disbursement.executionStartPlan || "",
       executionStartActual: disbursement.executionStartActual || "",
       executionEndPlan: disbursement.executionEndPlan || "",
       executionEndActual: disbursement.executionEndActual || "",
+
+      // Overall
+      overallStatus: disbursement.overallStatus || "Not Started",
+      progressPercentage: disbursement.progressPercentage || 0,
+      notes: disbursement.notes || "",
     });
     setShowModal(true);
   };
 
+  // ================= PERBAIKAN HANDLE SAVE =================
   const handleSave = async () => {
-    const result = await disbursementService.updateDisbursement(
-      editData.programId,
-      {
-        materialVendor: editData.materialVendor,
-        materialPoDate: editData.materialPoDate,
-        materialDeliveryPlan: editData.materialDeliveryPlan,
-        materialActualDelivery: editData.materialActualDelivery,
-        materialAmount: editData.materialAmount,
-        materialStatus: editData.materialStatus,
-        serviceVendor: editData.serviceVendor,
-        servicePoDate: editData.servicePoDate,
-        serviceStartPlan: editData.serviceStartPlan,
-        serviceStartActual: editData.serviceStartActual,
-        serviceEndPlan: editData.serviceEndPlan,
-        serviceEndActual: editData.serviceEndActual,
-        serviceAmount: editData.serviceAmount,
-        serviceStatus: editData.serviceStatus,
-        equipmentVendor: editData.equipmentVendor,
-        equipmentLeveringPlan: editData.equipmentLeveringPlan,
-        equipmentLeveringActual: editData.equipmentLeveringActual,
-        equipmentStatus: editData.equipmentStatus,
-        executionStartPlan: editData.executionStartPlan,
-        executionStartActual: editData.executionStartActual,
-        executionEndPlan: editData.executionEndPlan,
-        executionEndActual: editData.executionEndActual,
-        overallStatus: editData.overallStatus,
-        progressPercentage: editData.progressPercentage,
-        notes: editData.notes,
-      },
-    );
+    try {
+      // Bersihkan data. Kita pastikan tidak ada satupun yang undefined.
+      const payload = {
+        programId: editData.programId,
 
-    if (result.success) {
-      await loadData();
-      setShowModal(false);
-      showToast("Data disbursement berhasil disimpan", "success");
-    } else {
-      showToast("Gagal menyimpan: " + result.message, "error");
+        materialVendor: editData.materialVendor || "",
+        materialPoDate: editData.materialPoDate || "",
+        materialDeliveryPlan: editData.materialDeliveryPlan || "",
+        materialActualDelivery: editData.materialActualDelivery || "",
+        // Jika kosong, jadikan 0. Jika ada isinya, ubah ke Number.
+        materialAmount:
+          editData.materialAmount !== "" ? Number(editData.materialAmount) : 0,
+        materialStatus: editData.materialStatus || "Planned",
+
+        serviceVendor: editData.serviceVendor || "",
+        servicePoDate: editData.servicePoDate || "",
+        serviceStartPlan: editData.serviceStartPlan || "",
+        serviceStartActual: editData.serviceStartActual || "",
+        serviceEndPlan: editData.serviceEndPlan || "",
+        serviceEndActual: editData.serviceEndActual || "",
+        serviceAmount:
+          editData.serviceAmount !== "" ? Number(editData.serviceAmount) : 0,
+        serviceStatus: editData.serviceStatus || "Planned",
+
+        equipmentVendor: editData.equipmentVendor || "",
+        equipmentLeveringPlan: editData.equipmentLeveringPlan || "",
+        equipmentLeveringActual: editData.equipmentLeveringActual || "",
+        equipmentStatus: editData.equipmentStatus || "Not Yet",
+
+        executionStartPlan: editData.executionStartPlan || "",
+        executionStartActual: editData.executionStartActual || "",
+        executionEndPlan: editData.executionEndPlan || "",
+        executionEndActual: editData.executionEndActual || "",
+
+        overallStatus: editData.overallStatus || "Not Started",
+        progressPercentage: Number(editData.progressPercentage) || 0,
+        notes: editData.notes || "",
+      };
+
+      const result = await disbursementService.updateDisbursement(
+        payload.programId,
+        payload,
+      );
+
+      if (result.success) {
+        await loadData();
+        setShowModal(false);
+        showToast("Data disbursement berhasil disimpan", "success");
+      } else {
+        showToast("Gagal menyimpan: " + result.message, "error");
+      }
+    } catch (error) {
+      showToast("Terjadi kesalahan: " + error.message, "error");
     }
   };
 
@@ -225,7 +244,10 @@ const Disbursement = ({ userRole }) => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedProgramsToCreate.length === availableProgramsToCreate.length) {
+    if (
+      selectedProgramsToCreate.length === availableProgramsToCreate.length &&
+      availableProgramsToCreate.length > 0
+    ) {
       setSelectedProgramsToCreate([]);
     } else {
       setSelectedProgramsToCreate(availableProgramsToCreate.map((p) => p.no));
@@ -300,8 +322,10 @@ const Disbursement = ({ userRole }) => {
   );
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
 
-  const stats = useMemo(
-    () => ({
+  const stats = useMemo(() => {
+    const safeReduce = (arr, key) =>
+      arr.reduce((sum, item) => sum + (parseFloat(item[key]) || 0), 0);
+    return {
       total: disbursements.length,
       completed: disbursements.filter((d) => d.overallStatus === "Completed")
         .length,
@@ -313,26 +337,20 @@ const Disbursement = ({ userRole }) => {
         disbursements.reduce((sum, d) => sum + d.progressPercentage, 0) /
           (disbursements.length || 1),
       ),
-      totalMaterial: disbursements.reduce(
-        (sum, d) => sum + (parseFloat(d.materialAmount) || 0),
-        0,
-      ),
-      totalService: disbursements.reduce(
-        (sum, d) => sum + (parseFloat(d.serviceAmount) || 0),
-        0,
-      ),
-    }),
-    [disbursements],
-  );
+      totalMaterial: safeReduce(disbursements, "materialAmount"),
+      totalService: safeReduce(disbursements, "serviceAmount"),
+    };
+  }, [disbursements]);
 
   const formatCurrency = (amount) => {
-    if (!amount) return "-";
+    const num = parseFloat(amount);
+    if (!num || isNaN(num)) return "Rp 0";
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "IDR",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(num);
   };
 
   const statusChartData = [
@@ -341,21 +359,27 @@ const Disbursement = ({ userRole }) => {
     { name: "Delayed", value: stats.delayed, color: "#EF4444" },
     {
       name: "Others",
-      value: stats.total - stats.completed - stats.onProgress - stats.delayed,
+      value: Math.max(
+        0,
+        stats.total - stats.completed - stats.onProgress - stats.delayed,
+      ),
       color: "#6B7280",
     },
   ];
 
   return (
     <div className="space-y-6">
-      {/* Toast Notification */}
       <AnimatePresence>
         {toast.show && (
           <motion.div
             initial={{ opacity: 0, y: -50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -50 }}
-            className={`fixed top-20 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg ${toast.type === "success" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}
+            className={`fixed top-20 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg ${
+              toast.type === "success"
+                ? "bg-emerald-500 text-white"
+                : "bg-red-500 text-white"
+            }`}
           >
             {toast.type === "success" ? (
               <FiCheckCircle size={18} />
@@ -367,7 +391,6 @@ const Disbursement = ({ userRole }) => {
         )}
       </AnimatePresence>
 
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-[22px] border border-[#263b5b] bg-[#101B34] px-5 py-6 shadow-[0_14px_34px_rgba(16,27,52,0.12)] sm:px-7">
         <div>
           <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
@@ -378,7 +401,6 @@ const Disbursement = ({ userRole }) => {
           </p>
         </div>
         <div className="flex gap-3">
-          {/* Tombol Buat Disbursement Baru - HANYA UNTUK ADMIN */}
           {isAdmin && (
             <button
               onClick={() => {
@@ -391,11 +413,6 @@ const Disbursement = ({ userRole }) => {
                   ? "bg-gray-300 text-slate-500 cursor-not-allowed"
                   : "bg-sky-600 hover:bg-sky-700 text-white hover:shadow-lg"
               }`}
-              title={
-                availableProgramsToCreate.length === 0
-                  ? "Tidak ada program yang dapat ditambahkan"
-                  : "Buat jadwal disbursement untuk program baru"
-              }
             >
               <FiPlusCircle size={18} />
               <span>Buat Disbursement</span>
@@ -406,7 +423,6 @@ const Disbursement = ({ userRole }) => {
               )}
             </button>
           )}
-
           <button
             onClick={loadData}
             className="flex items-center gap-2 px-4 py-2.5 bg-white/10 border border-white/20 text-white rounded-xl hover:bg-white/20 transition-colors"
@@ -416,7 +432,6 @@ const Disbursement = ({ userRole }) => {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <motion.div
           whileHover={{ y: -4 }}
@@ -433,7 +448,6 @@ const Disbursement = ({ userRole }) => {
           <h3 className="font-semibold">Total Program</h3>
           <p className="text-xs text-slate-400">Dengan jadwal disbursement</p>
         </motion.div>
-
         <motion.div
           whileHover={{ y: -4 }}
           className="bg-white rounded-[20px] border border-slate-200/80 shadow-[0_3px_16px_rgba(15,23,42,0.035)] p-5"
@@ -449,7 +463,6 @@ const Disbursement = ({ userRole }) => {
           <h3 className="font-semibold">Selesai</h3>
           <p className="text-xs text-slate-400">Program telah tereksekusi</p>
         </motion.div>
-
         <motion.div
           whileHover={{ y: -4 }}
           className="bg-white rounded-[20px] border border-slate-200/80 shadow-[0_3px_16px_rgba(15,23,42,0.035)] p-5"
@@ -465,7 +478,6 @@ const Disbursement = ({ userRole }) => {
           <h3 className="font-semibold">Rata-rata Progress</h3>
           <p className="text-xs text-slate-400">Keseluruhan program</p>
         </motion.div>
-
         <motion.div
           whileHover={{ y: -4 }}
           className="bg-white rounded-[20px] border border-slate-200/80 shadow-[0_3px_16px_rgba(15,23,42,0.035)] p-5"
@@ -483,7 +495,6 @@ const Disbursement = ({ userRole }) => {
         </motion.div>
       </div>
 
-      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-[20px] border border-slate-200/80 shadow-[0_3px_18px_rgba(15,23,42,0.035)] p-6">
           <div className="flex items-center gap-2 mb-4">
@@ -510,7 +521,6 @@ const Disbursement = ({ userRole }) => {
             </PieChart>
           </ResponsiveContainer>
         </div>
-
         <div className="bg-white rounded-[20px] border border-slate-200/80 shadow-[0_3px_18px_rgba(15,23,42,0.035)] p-6">
           <div className="flex items-center gap-2 mb-4">
             <FiBarChart2 className="text-emerald-600" />
@@ -544,7 +554,6 @@ const Disbursement = ({ userRole }) => {
         </div>
       </div>
 
-      {/* Info Banner untuk Non-Admin */}
       {!isAdmin && (
         <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 flex items-center gap-3">
           <FiInfo className="text-sky-600 text-lg flex-shrink-0" />
@@ -555,7 +564,6 @@ const Disbursement = ({ userRole }) => {
         </div>
       )}
 
-      {/* Filters */}
       <div className="bg-white rounded-[20px] shadow-[0_3px_18px_rgba(15,23,42,0.035)] border-slate-200/80 border p-4">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
@@ -583,7 +591,6 @@ const Disbursement = ({ userRole }) => {
         </div>
       </div>
 
-      {/* Table */}
       <div className="bg-white rounded-[20px] shadow-[0_3px_18px_rgba(15,23,42,0.035)] border-slate-200/80 border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -660,14 +667,19 @@ const Disbursement = ({ userRole }) => {
                     </td>
                     <td className="px-3 py-3 text-center">
                       <span
-                        className={`inline-flex px-2 py-1 text-xs rounded-full ${materialStatusColors[d.materialStatus]}`}
+                        className={`inline-flex px-2 py-1 text-xs rounded-full ${
+                          materialStatusColors[d.materialStatus] ||
+                          "bg-gray-100"
+                        }`}
                       >
                         {d.materialStatus || "Planned"}
                       </span>
                     </td>
                     <td className="px-3 py-3 text-center">
                       <span
-                        className={`inline-flex px-2 py-1 text-xs rounded-full ${materialStatusColors[d.serviceStatus]}`}
+                        className={`inline-flex px-2 py-1 text-xs rounded-full ${
+                          materialStatusColors[d.serviceStatus] || "bg-gray-100"
+                        }`}
                       >
                         {d.serviceStatus || "Planned"}
                       </span>
@@ -690,7 +702,9 @@ const Disbursement = ({ userRole }) => {
                     </td>
                     <td className="px-3 py-3 text-center">
                       <span
-                        className={`inline-flex px-2 py-1 text-xs rounded-full ${statusColors[d.overallStatus]}`}
+                        className={`inline-flex px-2 py-1 text-xs rounded-full ${
+                          statusColors[d.overallStatus] || "bg-gray-100"
+                        }`}
                       >
                         {d.overallStatus}
                       </span>
@@ -741,7 +755,6 @@ const Disbursement = ({ userRole }) => {
         )}
       </div>
 
-      {/* MODAL CREATE DISBURSEMENT - HANYA UNTUK ADMIN */}
       {isAdmin && (
         <AnimatePresence>
           {showCreateModal && (
@@ -758,7 +771,6 @@ const Disbursement = ({ userRole }) => {
                 className="bg-white rounded-[20px] max-w-3xl w-full max-h-[80vh] flex flex-col shadow-2xl border border-slate-200"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Header Modal */}
                 <div className="sticky top-0 bg-sky-600 hover:bg-sky-700 px-6 py-4 rounded-t-2xl flex justify-between items-center">
                   <div>
                     <h2 className="text-xl font-bold text-white">
@@ -775,8 +787,6 @@ const Disbursement = ({ userRole }) => {
                     <FiX size={20} />
                   </button>
                 </div>
-
-                {/* Body Modal - List Program */}
                 <div className="flex-1 overflow-y-auto p-6">
                   {availableProgramsToCreate.length === 0 ? (
                     <div className="text-center py-12">
@@ -784,20 +794,17 @@ const Disbursement = ({ userRole }) => {
                       <p className="text-slate-500">
                         Semua program sudah memiliki jadwal disbursement
                       </p>
-                      <p className="text-sm text-slate-400 mt-1">
-                        Tidak ada program baru yang dapat ditambahkan
-                      </p>
                     </div>
                   ) : (
                     <>
-                      {/* Select All */}
                       <div className="flex items-center justify-between mb-4 pb-3 border-b">
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={
                               selectedProgramsToCreate.length ===
-                              availableProgramsToCreate.length
+                                availableProgramsToCreate.length &&
+                              availableProgramsToCreate.length > 0
                             }
                             onChange={toggleSelectAll}
                             className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
@@ -811,8 +818,6 @@ const Disbursement = ({ userRole }) => {
                           {availableProgramsToCreate.length} dipilih
                         </span>
                       </div>
-
-                      {/* List Program */}
                       <div className="space-y-2">
                         {availableProgramsToCreate.map((program) => (
                           <div
@@ -863,8 +868,6 @@ const Disbursement = ({ userRole }) => {
                     </>
                   )}
                 </div>
-
-                {/* Footer Modal */}
                 <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-3 rounded-b-2xl">
                   <button
                     onClick={() => setShowCreateModal(false)}
@@ -902,7 +905,6 @@ const Disbursement = ({ userRole }) => {
         </AnimatePresence>
       )}
 
-      {/* MODAL EDIT DISBURSEMENT - HANYA UNTUK ADMIN */}
       {isAdmin && (
         <AnimatePresence>
           {showModal && selectedProgram && (
@@ -919,8 +921,7 @@ const Disbursement = ({ userRole }) => {
                 className="bg-white rounded-[20px] max-w-5xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Header Modal Edit */}
-                <div className="sticky top-0 bg-[#101B34] hover:bg-[#1c335b] px-6 py-4 rounded-t-2xl flex justify-between items-center">
+                <div className="sticky top-0 bg-[#101B34] hover:bg-[#1c335b] px-6 py-4 rounded-t-2xl flex justify-between items-center z-10">
                   <div>
                     <h2 className="text-xl font-bold text-white">
                       Edit Disbursement
@@ -936,10 +937,7 @@ const Disbursement = ({ userRole }) => {
                     <FiX size={20} />
                   </button>
                 </div>
-
-                {/* Rest of modal content remains the same */}
                 <div className="p-6 space-y-6">
-                  {/* SECTION 1: MATERIAL / PERALATAN */}
                   <div className="bg-sky-50 rounded-xl p-4 border border-sky-200">
                     <h3 className="font-bold text-lg flex items-center gap-2 text-sky-800 mb-4">
                       <FiPackage /> 1. MATERIAL / PERALATAN
@@ -951,7 +949,7 @@ const Disbursement = ({ userRole }) => {
                         </label>
                         <input
                           type="text"
-                          placeholder="Nama vendor"
+                          placeholder="Nama vendor (opsional)"
                           value={editData.materialVendor || ""}
                           onChange={(e) =>
                             setEditData({
@@ -1048,8 +1046,6 @@ const Disbursement = ({ userRole }) => {
                       </div>
                     </div>
                   </div>
-
-                  {/* SECTION 2: SERVICE / JASA */}
                   <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
                     <h3 className="font-bold text-lg flex items-center gap-2 text-green-800 mb-4">
                       <FiTool /> 2. SERVICE / JASA
@@ -1061,7 +1057,7 @@ const Disbursement = ({ userRole }) => {
                         </label>
                         <input
                           type="text"
-                          placeholder="Nama vendor"
+                          placeholder="Nama vendor (opsional)"
                           value={editData.serviceVendor || ""}
                           onChange={(e) =>
                             setEditData({
@@ -1090,7 +1086,6 @@ const Disbursement = ({ userRole }) => {
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-emerald-700 mb-1">
-                          {" "}
                           Rencana Mulai
                         </label>
                         <input
@@ -1191,8 +1186,6 @@ const Disbursement = ({ userRole }) => {
                       </div>
                     </div>
                   </div>
-
-                  {/* SECTION 3: EQUIPMENT LEVERING */}
                   <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
                     <h3 className="font-bold text-lg flex items-center gap-2 text-yellow-800 mb-4">
                       <FiTruck /> 3. EQUIPMENT LEVERING
@@ -1204,7 +1197,7 @@ const Disbursement = ({ userRole }) => {
                         </label>
                         <input
                           type="text"
-                          placeholder="Nama vendor"
+                          placeholder="Nama vendor (opsional)"
                           value={editData.equipmentVendor || ""}
                           onChange={(e) =>
                             setEditData({
@@ -1268,8 +1261,6 @@ const Disbursement = ({ userRole }) => {
                       </div>
                     </div>
                   </div>
-
-                  {/* SECTION 4: TIMELINE EKSEKUSI */}
                   <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-200">
                     <h3 className="font-bold text-lg flex items-center gap-2 text-indigo-800 mb-4">
                       <FiCalendar /> 4. TIMELINE EKSEKUSI
@@ -1277,7 +1268,6 @@ const Disbursement = ({ userRole }) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-indigo-700 mb-1">
-                          {" "}
                           Rencana Mulai
                         </label>
                         <input
@@ -1342,8 +1332,6 @@ const Disbursement = ({ userRole }) => {
                       </div>
                     </div>
                   </div>
-
-                  {/* SECTION 5: STATUS & PROGRESS */}
                   <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
                     <h3 className="font-bold text-lg flex items-center gap-2 text-slate-900 mb-4">
                       <FiCheckCircle /> 5. STATUS & PROGRESS
@@ -1417,9 +1405,7 @@ const Disbursement = ({ userRole }) => {
                     </div>
                   </div>
                 </div>
-
-                {/* Footer Modal Edit */}
-                <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-3 rounded-b-2xl">
+                <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-3 rounded-b-2xl z-10">
                   <button
                     onClick={() => setShowModal(false)}
                     className="px-4 py-2 border rounded-xl"

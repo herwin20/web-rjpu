@@ -3,7 +3,6 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   FiRefreshCw,
   FiSearch,
-  FiDownload,
   FiX,
   FiEye,
   FiRotateCcw,
@@ -14,9 +13,7 @@ import {
   FiCalendar,
   FiFolder,
   FiDollarSign,
-  FiUser,
   FiClock,
-  FiTag,
   FiArchive,
   FiFilter,
   FiChevronLeft,
@@ -99,6 +96,9 @@ const DropData = ({ userRole }) => {
   const [loadingDelete, setLoadingDelete] = useState(false);
   const itemsPerPage = 10;
 
+  // KONSTANTA RANGE UNTUK SHEET DROP (28 KOLOM = A:AB)
+  const DROP_RANGE = "A:AB";
+
   useEffect(() => {
     loadDropData();
   }, []);
@@ -126,26 +126,17 @@ const DropData = ({ userRole }) => {
       await sheetsService.init();
       const dropExists = await sheetsService.sheetExists("Drop");
 
-      if (!dropExists) {
-        return [];
-      }
+      if (!dropExists) return [];
 
-      const data = await sheetsService.getAllData("Drop", "A:U");
+      // Ambil data dengan range A:AB (28 kolom)
+      const data = await sheetsService.getAllData("Drop", DROP_RANGE);
 
-      // Log untuk debugging
-      console.log("Drop sheet data:", data);
-      console.log("Data length:", data.length);
-
-      // Process data - skip header row if exists
       const processedData = [];
-      const startIndex =
-        data.length > 0 && (data[0]["NO"] === "NO" || data[0]["NO"] === "NO")
-          ? 1
-          : 0;
-
-      for (let i = startIndex; i < data.length; i++) {
+      // Asumsi getAllData mengembalikan array of objects karena ada header
+      for (let i = 0; i < data.length; i++) {
         const row = data[i];
-        // Skip empty rows
+
+        // Skip baris kosong
         if (
           !row["PROGRAM KERJA"] ||
           row["PROGRAM KERJA"].toString().trim() === ""
@@ -172,15 +163,23 @@ const DropData = ({ userRole }) => {
           hargaTotal: row["HARGA TOTAL"] || "",
           file: row["FILE"] || "",
           bidang: row["BIDANG"] || "",
+          // KOLOM BARU
+          kategori: row["KATEGORI"] || "",
+          hargaMaterial: row["HARGA MATERIAL"] || "",
+          hargaJasa: row["HARGA JASA"] || "",
+          tkdn: row["TKDN"] || "",
+          strategisRjpu: row["STRATEGIS RJPU"] || "",
+          aset: row["ASET"] || "",
+          descriptionAset: row["DESCRIPTION ASET"] || "",
           keterangan: row["KETERANGAN"] || "",
-          dropDate: row["DROP DATE"] || row["DROP_DATE"] || "",
-          dropStatus: row["DROP STATUS"] || row["DROP_STATUS"] || "DROP",
-          originalNo:
-            row["ORIGINAL NO"] || row["ORIGINAL_NO"] || row["NO"] || "",
+
+          // METADATA
+          dropDate: row["DROP DATE"] || "",
+          dropStatus: row["DROP STATUS"] || "DROP",
+          originalNo: row["ORIGINAL NO"] || row["NO"] || "",
         });
       }
 
-      console.log("Processed drop data:", processedData);
       return processedData;
     } catch (error) {
       console.error("Error getting drop sheet data:", error);
@@ -193,7 +192,7 @@ const DropData = ({ userRole }) => {
 
     setLoadingRestore(true);
     try {
-      // Prepare data to restore
+      // PERBAIKAN: Sertakan kolom baru (kategori, harga, strategis, dll) agar tidak ditolak oleh addData
       const restoredData = {
         programKerja: itemToRestore.programKerja,
         alasanProgram: itemToRestore.alasanProgram,
@@ -208,19 +207,26 @@ const DropData = ({ userRole }) => {
         sat: itemToRestore.sat,
         vol: itemToRestore.vol,
         tahun: itemToRestore.tahun,
-        hargaTotal: itemToRestore.hargaTotal,
         file: itemToRestore.file,
         bidang: itemToRestore.bidang,
         keterangan: itemToRestore.keterangan,
+
+        // KOLOM BARU (Wajib untuk validasi addData)
+        kategori: itemToRestore.kategori,
+        hargaMaterial: itemToRestore.hargaMaterial,
+        hargaJasa: itemToRestore.hargaJasa,
+        tkdn: itemToRestore.tkdn,
+        strategisRjpu: itemToRestore.strategisRjpu,
+        aset: itemToRestore.aset,
+        descriptionAset: itemToRestore.descriptionAset,
       };
 
-      // Add back to Data sheet
+      // Add back to Data sheet (akan otomatis generate ID baru & hitung harga total)
       const result = await dataSheet.addData(restoredData);
 
       if (result.success) {
-        // Remove from Drop sheet (clear the row)
+        // Hapus dari Drop sheet
         await removeFromDropSheet(itemToRestore.originalNo || itemToRestore.no);
-
         await loadDropData();
         showToast(
           `Program "${itemToRestore.programKerja}" berhasil direstore dengan NO baru: ${result.no}`,
@@ -240,16 +246,20 @@ const DropData = ({ userRole }) => {
 
   const removeFromDropSheet = async (originalNo) => {
     try {
-      const allDataRaw = await sheetsService.getRawData("Drop", "A:U");
+      const allDataRaw = await sheetsService.getRawData("Drop", DROP_RANGE);
 
       let rowIndex = -1;
       for (let i = 0; i < allDataRaw.length; i++) {
         const row = allDataRaw[i];
-        // Check multiple possible column indices for original NO
+        if (!row) continue;
+
+        // PERBAIKAN: Cari di row[27] (ORIGINAL NO) atau row[0] (NO)
+        const valOriginalNo = row[27] ? row[27].toString() : "";
+        const valNo = row[0] ? row[0].toString() : "";
+
         if (
-          row &&
-          ((row[20] && row[20].toString() === originalNo.toString()) ||
-            (row[0] && row[0].toString() === originalNo.toString()))
+          valOriginalNo === originalNo.toString() ||
+          valNo === originalNo.toString()
         ) {
           rowIndex = i;
           break;
@@ -258,8 +268,9 @@ const DropData = ({ userRole }) => {
 
       if (rowIndex !== -1) {
         const sheetRow = rowIndex + 1;
-        const emptyRow = Array(21).fill("");
-        const range = `Drop!A${sheetRow}:U${sheetRow}`;
+        // Kosongkan 28 kolom (A:AB)
+        const emptyRow = Array(28).fill("");
+        const range = `Drop!A${sheetRow}:AB${sheetRow}`;
         await sheetsService.writeData(range, [emptyRow]);
         console.log(`Removed row ${sheetRow} from Drop sheet`);
       } else {
@@ -331,11 +342,59 @@ const DropData = ({ userRole }) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return "-";
+
     try {
-      return new Date(dateString).toLocaleString("id-ID");
-    } catch {
-      return dateString;
+      // 1. Jika sudah format Date bawaan JS
+      if (dateString instanceof Date && !isNaN(dateString)) {
+        return dateString.toLocaleString("id-ID");
+      }
+
+      const str = String(dateString).trim();
+
+      // 2. Coba parse format Indonesia: "DD/MM/YYYY, HH.mm.ss"
+      // Pisahkan berdasarkan koma
+      const parts = str.split(",");
+      if (parts.length >= 2) {
+        const datePart = parts[0].trim(); // "06/11/2026"
+        const timePart = parts[1].trim(); // "20.50.27"
+
+        const [day, month, year] = datePart.split("/").map(Number);
+        const [hours, minutes] = timePart.split(/[.:]/).map(Number);
+
+        // Validasi angka
+        if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+          // Buat Date object (month - 1 karena JS bulan mulai dari 0)
+          const dateObj = new Date(
+            year,
+            month - 1,
+            day,
+            hours || 0,
+            minutes || 0,
+          );
+
+          if (!isNaN(dateObj.getTime())) {
+            return dateObj.toLocaleString("id-ID", {
+              year: "numeric",
+              month: "short",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+          }
+        }
+      }
+
+      // 3. Fallback: Jika tidak ada koma, coba parse date string biasa
+      const fallbackDate = new Date(str);
+      if (!isNaN(fallbackDate.getTime())) {
+        return fallbackDate.toLocaleString("id-ID");
+      }
+    } catch (error) {
+      console.error("Error parsing date:", error, dateString);
     }
+
+    // Jika semua gagal, kembalikan string asli (jangan tampilkan "-")
+    return dateString;
   };
 
   const getFilteredData = useCallback(() => {
@@ -349,7 +408,8 @@ const DropData = ({ userRole }) => {
           (item.klusterProgram || "").toLowerCase().includes(term) ||
           (item.tahun || "").includes(term) ||
           (item.originalNo || "").toLowerCase().includes(term) ||
-          (item.dropStatus || "").toLowerCase().includes(term),
+          (item.kategori || "").toLowerCase().includes(term) || // Tambahan filter baru
+          (item.aset || "").toLowerCase().includes(term), // Tambahan filter baru
       );
     }
 
@@ -380,6 +440,15 @@ const DropData = ({ userRole }) => {
     return colors[status] || "bg-gray-100 text-gray-700";
   };
 
+  const getKategoriBadge = (kategori) => {
+    const map = {
+      Material: "bg-blue-100 text-blue-700",
+      Jasa: "bg-purple-100 text-purple-700",
+      "Material & Jasa": "bg-orange-100 text-orange-700",
+    };
+    return map[kategori] || "bg-gray-100 text-gray-600";
+  };
+
   const filteredData = getFilteredData();
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const paginatedData = filteredData.slice(
@@ -406,7 +475,6 @@ const DropData = ({ userRole }) => {
     exit: { opacity: 0, scale: 0.95, transition: { duration: 0.15 } },
   };
 
-  // Loading Overlay
   const LoadingOverlay = ({ message }) => (
     <motion.div
       initial={{ opacity: 0 }}
@@ -421,11 +489,9 @@ const DropData = ({ userRole }) => {
     </motion.div>
   );
 
-  // Loading Skeleton View
   if (loading) {
     return (
       <div className="min-h-screen bg-transparent p-0 text-slate-800">
-        {/* Header Skeleton */}
         <div className="mb-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5 mb-6 rounded-[26px] bg-[#101b34] px-5 py-6 md:px-7 md:py-7 shadow-[0_16px_38px_rgba(16,27,52,.13)]">
             <div>
@@ -434,16 +500,12 @@ const DropData = ({ userRole }) => {
             </div>
             <div className="h-10 bg-gray-200 rounded-xl w-24 animate-pulse"></div>
           </div>
-
-          {/* Stats Cards Skeleton */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
             <SkeletonStatsCard />
             <SkeletonStatsCard />
             <SkeletonStatsCard />
             <SkeletonStatsCard />
           </div>
-
-          {/* Filters Bar Skeleton */}
           <div className="bg-white rounded-[22px] shadow-[0_3px_20px_rgba(15,23,42,0.035)] border border-slate-200/80 p-4 animate-pulse">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1 h-11 bg-gray-200 rounded-xl"></div>
@@ -452,40 +514,16 @@ const DropData = ({ userRole }) => {
             </div>
           </div>
         </div>
-
-        {/* Table Skeleton */}
         <div className="bg-white rounded-[22px] shadow-[0_3px_20px_rgba(15,23,42,0.035)] border border-slate-200/80 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-4">
-                    <div className="h-3 bg-gray-200 rounded w-20 animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4">
-                    <div className="h-3 bg-gray-200 rounded w-24 animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4">
-                    <div className="h-3 bg-gray-200 rounded w-16 animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4">
-                    <div className="h-3 bg-gray-200 rounded w-12 animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4 text-center">
-                    <div className="h-3 bg-gray-200 rounded w-12 mx-auto animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4 text-right">
-                    <div className="h-3 bg-gray-200 rounded w-16 ml-auto animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4 text-center">
-                    <div className="h-3 bg-gray-200 rounded w-16 mx-auto animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4 text-center">
-                    <div className="h-3 bg-gray-200 rounded w-12 mx-auto animate-pulse"></div>
-                  </th>
-                  <th className="px-4 py-4 text-center">
-                    <div className="h-3 bg-gray-200 rounded w-12 mx-auto animate-pulse"></div>
-                  </th>
+                  {[...Array(9)].map((_, i) => (
+                    <th key={i} className="px-4 py-4">
+                      <div className="h-3 bg-gray-200 rounded w-16 animate-pulse mx-auto"></div>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -850,7 +888,7 @@ const DropData = ({ userRole }) => {
               <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Cari program, kluster, tahun, atau original NO..."
+                placeholder="Cari program, kluster, tahun, kategori, aset, atau original NO..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -918,10 +956,10 @@ const DropData = ({ userRole }) => {
                     Program Kerja
                   </th>
                   <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Kluster
+                    Kategori
                   </th>
                   <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Sumber
+                    Kluster
                   </th>
                   <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Tahun
@@ -967,16 +1005,18 @@ const DropData = ({ userRole }) => {
                         )}
                       </td>
                       <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-lg ${getKategoriBadge(item.kategori)}`}
+                        >
+                          {item.kategori || "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
                         <span className="inline-flex px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
                           {item.klusterProgram
                             ?.split(" ")
                             .slice(0, 2)
                             .join(" ") || "-"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm font-medium text-slate-700">
-                          {item.sumberAnggaran || "-"}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -1169,6 +1209,18 @@ const DropData = ({ userRole }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
                   <div className="bg-slate-50 rounded-xl p-3">
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Kategori
+                    </label>
+                    <p className="font-medium text-slate-700 mt-1">
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs rounded-lg ${getKategoriBadge(selectedItem.kategori)}`}
+                      >
+                        {selectedItem.kategori || "-"}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                       Kluster Program
                     </label>
                     <p className="font-medium text-slate-700 mt-1">
@@ -1185,18 +1237,38 @@ const DropData = ({ userRole }) => {
                   </div>
                   <div className="bg-slate-50 rounded-xl p-3">
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Harga Total
-                    </label>
-                    <p className="font-bold text-emerald-600 mt-1 text-lg">
-                      {formatCurrency(selectedItem.hargaTotal)}
-                    </p>
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-3">
-                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                       Bidang
                     </label>
                     <p className="font-medium text-slate-700 mt-1">
                       {selectedItem.bidang || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Harga Material
+                    </label>
+                    <p className="font-bold text-blue-600 mt-1">
+                      {parseFloat(selectedItem.hargaMaterial) > 0
+                        ? formatCurrency(selectedItem.hargaMaterial)
+                        : "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Harga Jasa
+                    </label>
+                    <p className="font-bold text-purple-600 mt-1">
+                      {parseFloat(selectedItem.hargaJasa) > 0
+                        ? formatCurrency(selectedItem.hargaJasa)
+                        : "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 md:col-span-2">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Harga Total
+                    </label>
+                    <p className="font-bold text-emerald-600 mt-1 text-lg">
+                      {formatCurrency(selectedItem.hargaTotal)}
                     </p>
                   </div>
                   <div className="bg-slate-50 rounded-xl p-3">
@@ -1215,6 +1287,38 @@ const DropData = ({ userRole }) => {
                       className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${getRiskColor(selectedItem.levelResikoInherent)}`}
                     >
                       {selectedItem.levelResikoInherent || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      TKDN
+                    </label>
+                    <p className="font-medium text-slate-700 mt-1">
+                      {selectedItem.tkdn || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 md:col-span-2">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Strategis RJPU
+                    </label>
+                    <p className="font-medium text-slate-700 mt-1">
+                      {selectedItem.strategisRjpu || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Aset
+                    </label>
+                    <p className="font-medium text-slate-700 mt-1">
+                      {selectedItem.aset || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Deskripsi Aset
+                    </label>
+                    <p className="font-medium text-slate-700 mt-1">
+                      {selectedItem.descriptionAset || "-"}
                     </p>
                   </div>
                 </div>
