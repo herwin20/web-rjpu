@@ -34,6 +34,8 @@ import DropData from "./DropDataPage";
 import MappingData from "./MappingDataPage";
 import DisbursementData from "./PerencanaanPage";
 import NotificationPanel from "../components/NotificationPanel";
+import RjpuAnggaran from "./AnggaranPage";
+
 import {
   MENU_ITEMS,
   BADGE_MAX_DISPLAY,
@@ -650,6 +652,10 @@ export default function Dashboard({ user, onLogout }) {
               element={
                 <ProgramData userRole={user?.role} viewType="programs" />
               }
+            />
+            <Route
+              path="/anggaran-rjpu"
+              element={<RjpuAnggaran userRole={user?.role} />}
             />
             <Route
               path="/drop-data"

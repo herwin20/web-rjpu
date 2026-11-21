@@ -32,6 +32,15 @@ export const MENU_ITEMS = [
     description: "Kelola program kerja",
   },
   {
+    id: "anggaran-rjpu",
+    label: "Anggaran RJPU",
+    description: "Material, Jasa & AKI",
+    path: "/dashboard/anggaran-rjpu",
+    icon: "calendar",
+    exact: true,
+    roles: ["Admin", "User"],
+  },
+  {
     id: "drop-data",
     label: "Program Drop",
     icon: "archive",
