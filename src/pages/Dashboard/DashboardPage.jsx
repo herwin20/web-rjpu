@@ -35,6 +35,7 @@ import MappingData from "./MappingDataPage";
 import DisbursementData from "./PerencanaanPage";
 import NotificationPanel from "../components/NotificationPanel";
 import RjpuAnggaran from "./AnggaranPage";
+import LogoAwal from "../../assets/logo_awal.png";
 
 import {
   MENU_ITEMS,
@@ -234,8 +235,15 @@ function SidebarContent({
       <div
         className={`flex h-[82px] shrink-0 items-center border-b border-white/10 ${collapsed ? "justify-center px-3" : "gap-3 px-5"}`}
       >
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-sky-400/20 bg-sky-400/15 text-sky-300">
-          <FiZap size={23} />
+        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-sky-400/20 bg-sky-400/15">
+          {/* Efek Pendaran Lampu Pijar Kecil */}
+          <div className="absolute inset-0 rounded-2xl bg-amber-400/40 blur-md mix-blend-screen animate-pulse" />
+
+          <img
+            src={LogoAwal}
+            alt="Logo RJPU"
+            className="relative z-10 h-7 w-7 object-contain drop-shadow-[0_0_10px_rgba(246,196,83,0.8)]"
+          />
         </div>
         {!collapsed && (
           <div className="min-w-0 flex-1">

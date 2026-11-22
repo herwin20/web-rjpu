@@ -11,9 +11,10 @@ import {
   FiZap,
 } from "react-icons/fi";
 import LogoWeb from "../../assets/logo.png";
+import LogoAwal from "../../assets/logo_awal.png";
 
 const LoginPage = ({ onLogin }) => {
-  const [phase, setPhase] = useState("dark"); // dark | pulling | lit
+  const [phase, setPhase] = useState("dark"); // dark | charging | lit
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -28,7 +29,7 @@ const LoginPage = ({ onLogin }) => {
   const cardRef = useRef(null);
 
   const isLit = phase === "lit";
-  const isPulling = phase === "pulling";
+  const isCharging = phase === "charging";
 
   useEffect(() => {
     mountedRef.current = true;
@@ -54,7 +55,7 @@ const LoginPage = ({ onLogin }) => {
     timerRef.current.push(id);
   };
 
-  const turnOn = () => {
+  const handleLoginClick = () => {
     if (phase !== "dark") return;
     setError("");
     if (reduceMotion) {
@@ -62,12 +63,13 @@ const LoginPage = ({ onLogin }) => {
       schedule(() => usernameRef.current?.focus(), 0);
       return;
     }
-    setPhase("pulling");
+
+    setPhase("charging");
     schedule(() => {
       if (!mountedRef.current) return;
       setPhase("lit");
       schedule(() => usernameRef.current?.focus(), 750);
-    }, 340);
+    }, 1600); // Durasi animasi total (pembentukan + penyedotan)
   };
 
   const handleSubmit = async (event) => {
@@ -122,25 +124,6 @@ const LoginPage = ({ onLogin }) => {
       }`}
     >
       <style>{`
-        @keyframes rjpu-cord-pull {
-          0%   { transform: translateY(0) rotate(0deg); }
-          35%  { transform: translateY(30px) rotate(1.5deg); }
-          65%  { transform: translateY(18px) rotate(-1deg); }
-          100% { transform: translateY(0) rotate(0deg); }
-        }
-        @keyframes rjpu-cord-idle {
-          0%,100% { transform: rotate(-1.6deg); }
-          50%     { transform: rotate(1.6deg); }
-        }
-        @keyframes rjpu-bulb-swing {
-          0%,100% { transform: rotate(-2deg); }
-          50%     { transform: rotate(2deg); }
-        }
-        @keyframes rjpu-glow {
-          0%   { opacity: 0; transform: scale(0.55); }
-          45%  { opacity: 1; transform: scale(1.18); }
-          100% { opacity: 0.85; transform: scale(1); }
-        }
         @keyframes rjpu-reveal {
           from { opacity: 0; transform: translateY(30px) rotateX(10deg) scale(0.96); }
           to   { opacity: 1; transform: translateY(0) rotateX(0deg) scale(1); }
@@ -170,20 +153,42 @@ const LoginPage = ({ onLogin }) => {
           0%,100% { opacity: .35; }
           50%     { opacity: .6; }
         }
+        @keyframes rjpu-logo-bulb-glow {
+          0%,100% { opacity: 0.6; transform: scale(0.95); filter: blur(40px); }
+          50%     { opacity: 0.9; transform: scale(1.1); filter: blur(60px); }
+        }
+        
+        /* Animasi Cakra Energi Masuk ke Tombol */
+        @keyframes rjpu-energy-gather {
+          0% { transform: scale(2.5) rotate(0deg); opacity: 0; }
+          30% { transform: scale(1.2) rotate(180deg); opacity: 1; }
+          70% { transform: scale(0.8) rotate(360deg); opacity: 1; }
+          100% { transform: scale(0) rotate(540deg); opacity: 0; }
+        }
+        @keyframes rjpu-flash {
+          0%, 100% { opacity: 0; }
+          50% { opacity: 1; background-color: #fff; }
+        }
+
         .rjpu-login { transition: background-color 900ms ease; }
-        .rjpu-pulling { animation: rjpu-cord-pull 340ms cubic-bezier(.2,.75,.25,1); }
-        .rjpu-cord-idle { animation: rjpu-cord-idle 3.6s ease-in-out infinite; transform-origin: top center; }
-        .rjpu-bulb-swing { animation: rjpu-bulb-swing 4.4s ease-in-out infinite; transform-origin: top center; }
         .rjpu-reveal { animation: rjpu-reveal 780ms cubic-bezier(.18,.8,.2,1) both; }
-        .rjpu-glow { animation: rjpu-glow 900ms ease-out both; }
         .rjpu-breathe { animation: rjpu-breathe 4s ease-in-out infinite; }
         .rjpu-floor-glow { animation: rjpu-floor-glow 3s ease-in-out infinite; }
         .rjpu-twinkle { animation: rjpu-twinkle 3.6s ease-in-out infinite; }
         .rjpu-smoke { animation: rjpu-smoke 4s ease-out infinite; }
         .rjpu-flow { stroke-dasharray: 6 6; animation: rjpu-flow 1.2s linear infinite; }
         .rjpu-moon-glow { animation: rjpu-moon-glow 5s ease-in-out infinite; }
+        .rjpu-logo-bulb-glow { animation: rjpu-logo-bulb-glow 4s ease-in-out infinite; }
         .rjpu-card-3d { transform-style: preserve-3d; will-change: transform; }
         .rjpu-tilt { transition: transform 260ms ease-out; }
+        
+        .rjpu-energy-gather {
+          animation: rjpu-energy-gather 1.3s cubic-bezier(0.6, 0.05, 0.2, 1) forwards;
+        }
+        .rjpu-flash {
+          animation: rjpu-flash 0.3s ease-in-out forwards;
+        }
+
         @media(prefers-reduced-motion:reduce){
           .rjpu-login,.rjpu-login *{
             animation-duration:.01ms!important;
@@ -192,6 +197,14 @@ const LoginPage = ({ onLogin }) => {
           }
         }
       `}</style>
+
+      {/* Efek kilatan layar saat energi tersedot */}
+      {isCharging && (
+        <div
+          className="fixed inset-0 z-[100] pointer-events-none rjpu-flash"
+          style={{ animationDelay: "1.3s" }}
+        />
+      )}
 
       {/* Dark ambient background */}
       <div
@@ -226,10 +239,7 @@ const LoginPage = ({ onLogin }) => {
           isLit ? "opacity-100" : "opacity-0"
         }`}
       >
-        {/* Langit malam */}
         <div className="absolute inset-0 bg-[linear-gradient(180deg,#04070f_0%,#081326_38%,#0d1f38_68%,#0a1626_100%)]" />
-
-        {/* Bulan + glow */}
         <div className="absolute right-[12%] top-[10%]">
           <div className="rjpu-moon-glow absolute -inset-10 rounded-full bg-slate-200/10 blur-3xl" />
           <div className="relative h-16 w-16 rounded-full bg-[radial-gradient(circle_at_35%_30%,#f4f7ff,#cfd9ee_55%,#9fb0cf_100%)] shadow-[0_0_45px_12px_rgba(226,232,240,.25)]">
@@ -238,8 +248,6 @@ const LoginPage = ({ onLogin }) => {
             <div className="absolute left-9 top-3 h-1 w-1 rounded-full bg-slate-400/30" />
           </div>
         </div>
-
-        {/* Bintang berkelip */}
         {[...Array(40)].map((_, i) => (
           <span
             key={i}
@@ -253,12 +261,8 @@ const LoginPage = ({ onLogin }) => {
             }}
           />
         ))}
-
-        {/* Silhouette pembangkit listrik di horizon */}
         <div className="absolute inset-x-0 bottom-0 h-[46%]">
-          {/* Kabut/glow di kaki pembangkit */}
           <div className="absolute inset-x-0 bottom-0 h-24 bg-[radial-gradient(ellipse_at_50%_100%,rgba(120,160,220,.18),transparent_70%)] blur-md" />
-
           <svg
             viewBox="0 0 1440 420"
             preserveAspectRatio="none"
@@ -276,32 +280,23 @@ const LoginPage = ({ onLogin }) => {
                 <stop offset="100%" stopColor="#e09a2a" />
               </radialGradient>
             </defs>
-
-            {/* Tanah */}
             <path
               d="M0 300 L1440 300 L1440 420 L0 420 Z"
               fill="url(#nightGround)"
             />
-
-            {/* Gedung utama kiri */}
             <g fill="#0c182c">
               <rect x="70" y="235" width="220" height="90" rx="3" />
               <polygon points="62,238 290,238 268,220 84,220" />
             </g>
-
-            {/* Cerobong 1 */}
             <g fill="#0b1628">
               <rect x="120" y="150" width="24" height="90" rx="2" />
               <rect x="116" y="144" width="32" height="9" rx="2" />
             </g>
-            {/* Asap cerobong 1 */}
             <g className="rjpu-smoke" style={{ animationDelay: "0s" }}>
               <circle cx="132" cy="132" r="10" fill="rgba(160,185,220,.22)" />
               <circle cx="140" cy="112" r="14" fill="rgba(160,185,220,.16)" />
               <circle cx="128" cy="92" r="12" fill="rgba(160,185,220,.10)" />
             </g>
-
-            {/* Cerobong 2 */}
             <g fill="#0b1628">
               <rect x="230" y="175" width="20" height="65" rx="2" />
               <rect x="226" y="169" width="28" height="8" rx="2" />
@@ -311,13 +306,10 @@ const LoginPage = ({ onLogin }) => {
               <circle cx="248" cy="140" r="12" fill="rgba(160,185,220,.14)" />
               <circle cx="238" cy="122" r="10" fill="rgba(160,185,220,.09)" />
             </g>
-
-            {/* Gedung utama kanan (lebih besar, menyatu dengan area form) */}
             <g fill="#0b1527">
               <rect x="520" y="210" width="360" height="115" rx="4" />
               <polygon points="512,214 888,214 860,190 540,190" />
             </g>
-            {/* Cerobong besar */}
             <g fill="#0a1425">
               <rect x="560" y="95" width="34" height="125" rx="3" />
               <rect x="554" y="86" width="46" height="12" rx="2" />
@@ -336,8 +328,6 @@ const LoginPage = ({ onLogin }) => {
               <circle cx="824" cy="76" r="15" fill="rgba(160,185,220,.13)" />
               <circle cx="810" cy="54" r="12" fill="rgba(160,185,220,.08)" />
             </g>
-
-            {/* Menara pendingin */}
             <g fill="#0a1425">
               <polygon points="380,325 410,205 470,205 500,325" />
               <polygon points="410,205 470,205 458,190 422,190" />
@@ -346,8 +336,6 @@ const LoginPage = ({ onLogin }) => {
               <circle cx="440" cy="176" r="12" fill="rgba(160,185,220,.18)" />
               <circle cx="452" cy="156" r="15" fill="rgba(160,185,220,.12)" />
             </g>
-
-            {/* Jendela menyala gedung kanan */}
             {[540, 580, 620, 660, 700, 740, 780, 820].map((x) => (
               <rect
                 key={x}
@@ -372,7 +360,6 @@ const LoginPage = ({ onLogin }) => {
                 opacity="0.5"
               />
             ))}
-            {/* Jendela gedung kiri */}
             {[92, 126, 160, 194, 228, 262].map((x) => (
               <rect
                 key={x}
@@ -385,8 +372,6 @@ const LoginPage = ({ onLogin }) => {
                 opacity="0.65"
               />
             ))}
-
-            {/* Tiang listrik + kabel */}
             <rect x="980" y="150" width="5" height="175" fill="#0a1425" />
             <rect x="964" y="158" width="38" height="5" rx="1" fill="#0a1425" />
             <rect x="972" y="196" width="22" height="4" rx="1" fill="#0a1425" />
@@ -402,8 +387,6 @@ const LoginPage = ({ onLogin }) => {
               stroke="#0a1425"
               strokeWidth="2"
             />
-
-            {/* Aliran listrik berkilau */}
             <path
               d="M986 196 Q900 230 880 250"
               fill="none"
@@ -419,8 +402,6 @@ const LoginPage = ({ onLogin }) => {
               strokeWidth="0.9"
               className="rjpu-flow"
             />
-
-            {/* Tiang kedua */}
             <rect x="1180" y="180" width="4" height="145" fill="#0a1425" />
             <rect
               x="1164"
@@ -452,23 +433,13 @@ const LoginPage = ({ onLogin }) => {
             />
           </svg>
         </div>
-
-        {/* Sorot hangat dari arah lampu (kiri) */}
         <div className="absolute inset-y-0 left-0 w-[55%] bg-[radial-gradient(ellipse_at_0%_30%,rgba(255,214,140,.16),transparent_65%)]" />
       </div>
 
-      <header
-        className={`absolute left-5 right-5 top-5 z-20 flex items-center justify-between sm:left-10 sm:right-10 sm:top-8 ${
-          isLit ? "text-white/70" : "text-white/70"
-        }`}
-      >
+      <header className="absolute left-5 right-5 top-5 z-20 flex items-center justify-between text-white/70 sm:left-10 sm:right-10 sm:top-8">
         <div className="flex items-center gap-2.5 text-xs font-semibold tracking-[.16em] sm:text-sm">
           <span
-            className={`grid h-8 w-8 place-items-center rounded-xl transition-colors duration-700 ${
-              isLit
-                ? "bg-white/10 text-amber-300"
-                : "bg-white/10 text-amber-300"
-            }`}
+            className={`grid h-8 w-8 place-items-center rounded-xl bg-white/10 text-amber-300`}
           >
             <FiZap size={16} />
           </span>
@@ -478,9 +449,7 @@ const LoginPage = ({ onLogin }) => {
           </span>
         </div>
         <span
-          className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold tracking-widest transition-colors duration-700 sm:text-xs ${
-            isLit ? "border-white/15 bg-white/5" : "border-white/15 bg-white/5"
-          }`}
+          className={`rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[10px] font-semibold tracking-widest sm:text-xs`}
         >
           UNIT PLANNING
         </span>
@@ -489,52 +458,34 @@ const LoginPage = ({ onLogin }) => {
       <div className="relative z-10 flex min-h-[100svh] flex-col items-center justify-center px-4 pb-14 pt-24 sm:px-6">
         {!isLit && (
           <section
-            className="flex w-full max-w-lg flex-col items-center text-center text-white"
-            aria-label="Nyalakan lampu untuk masuk"
+            className="flex w-full max-w-2xl flex-col items-center text-center text-white"
+            aria-label="Klik untuk masuk"
           >
-            <div className="relative mb-8 flex h-[300px] w-full flex-col items-center justify-start perspective-[800px]">
-              <div className="rjpu-breathe relative flex flex-col items-center [transform-style:preserve-3d]">
-                <div className="h-20 w-[3px] rounded-full bg-gradient-to-b from-slate-500 to-slate-700 shadow-[0_0_8px_#0008]" />
-                <div className="relative h-16 w-36 [transform-style:preserve-3d]">
-                  <div className="absolute inset-0 rounded-t-[5rem] border border-slate-500/80 bg-gradient-to-b from-[#5b687d] via-[#2f3b50] to-[#0f1826] shadow-[0_18px_40px_#0007,inset_0_2px_6px_#ffffff33,inset_0_-8px_16px_#00000066]" />
-                  <div className="absolute inset-x-6 top-2 h-4 rounded-full bg-white/15 blur-[3px]" />
-                  <div className="absolute -bottom-1 left-1/2 h-3 w-28 -translate-x-1/2 rounded-full bg-gradient-to-b from-slate-500 to-slate-700 shadow-[0_6px_10px_#0006]" />
-                </div>
-                <div className="relative -mt-3 h-10 w-10 [transform-style:preserve-3d]">
-                  <div className="rjpu-bulb-swing absolute inset-0 rounded-full bg-[radial-gradient(circle_at_35%_30%,#fff7d6,#f6c453_45%,#a1701b_100%)] shadow-[0_0_25px_8px_#f6c45355,inset_-3px_-4px_8px_#00000055,inset_3px_3px_6px_#ffffffaa]" />
-                  <div className="absolute left-1/2 top-1/2 h-3 w-[2px] -translate-x-1/2 -translate-y-1/2 rounded bg-amber-100 shadow-[0_0_6px_2px_#fff3]" />
-                </div>
-                <div className="relative -mt-1 h-6 w-8 rounded-b-lg bg-gradient-to-b from-slate-400 via-slate-600 to-slate-800 shadow-inner" />
+            {/* ===== HERO SECTION: LOGO BESAR SEBAGAI LAMPU ===== */}
+            <div className="relative mb-12 flex w-full flex-col items-center justify-center mt-8">
+              {/* Efek Pendaran Lampu Pijar (Bulb Glow) */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div
+                  className={`w-64 h-64 sm:w-80 sm:h-80 rounded-full bg-amber-500/40 mix-blend-screen ${reduceMotion ? "" : "rjpu-logo-bulb-glow"}`}
+                />
+                <div className="absolute w-48 h-48 rounded-full bg-yellow-300/30 blur-[50px] mix-blend-screen" />
               </div>
 
+              {/* Logo Utama */}
               <div
-                aria-hidden="true"
-                className="rjpu-floor-glow absolute bottom-2 left-1/2 h-6 w-52 -translate-x-1/2 rounded-[50%] bg-amber-300/25 blur-xl"
-              />
-
-              <button
-                type="button"
-                onClick={turnOn}
-                disabled={isPulling}
-                aria-label="Tarik tali untuk menyalakan lampu dan membuka formulir login"
-                className="group absolute left-[calc(50%+88px)] top-10 flex w-16 flex-col items-center rounded-xl py-2 outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:cursor-wait sm:left-[calc(50%+100px)]"
+                className={`group relative z-10 flex flex-col items-center outline-none ${
+                  reduceMotion ? "" : "rjpu-breathe"
+                } ${isCharging ? "scale-110" : ""} transition-transform duration-500`}
               >
-                <span
-                  aria-hidden="true"
-                  className={`flex origin-top flex-col items-center ${
-                    isPulling
-                      ? "rjpu-pulling"
-                      : "rjpu-cord-idle transition-transform duration-200 group-hover:translate-y-2 group-active:translate-y-5"
-                  }`}
-                >
-                  <span className="h-32 w-[2px] bg-gradient-to-b from-slate-600 via-slate-400 to-slate-200 shadow-[0_0_4px_#0006]" />
-                  <span className="relative h-8 w-3 rounded-full bg-gradient-to-r from-slate-400 via-white to-slate-500 shadow-[0_4px_8px_#0007,inset_-1px_0_2px_#ffffffcc,inset_1px_0_3px_#00000055]">
-                    <span className="absolute left-1/2 top-1/2 h-4 w-[1px] -translate-x-1/2 -translate-y-1/2 bg-white/60" />
-                  </span>
-                </span>
-              </button>
+                <img
+                  src={LogoAwal}
+                  alt="Logo Utama RJPU"
+                  className="h-64 w-64 sm:h-80 sm:w-80 object-contain drop-shadow-[0_0_35px_rgba(246,196,83,0.9)]"
+                />
+              </div>
             </div>
 
+            {/* Teks & Tombol */}
             <span className="mb-4 rounded-full border border-amber-300/15 bg-amber-300/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[.22em] text-amber-200 backdrop-blur-sm">
               Welcome to RJPU
             </span>
@@ -546,22 +497,47 @@ const LoginPage = ({ onLogin }) => {
               </span>
             </h1>
             <p className="mt-4 max-w-sm text-sm leading-7 text-slate-400 sm:text-base">
-              Tarik tali lampu untuk membuka akses ke Rencana Jangka Panjang
-              Unit.
+              Silakan masuk untuk mengakses Rencana Jangka Panjang Unit.
             </p>
+
+            {/* Tombol Login dengan Animasi Cakra Energi */}
             <button
               type="button"
-              onClick={turnOn}
-              disabled={isPulling}
-              className="mt-8 flex items-center gap-3 rounded-2xl border border-white/20 bg-white/10 px-6 py-3.5 text-sm font-semibold text-white shadow-[0_10px_30px_-10px_#000a,inset_0_1px_0_#ffffff22] backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-amber-300/50 hover:bg-white/15 hover:shadow-[0_16px_36px_-12px_#000c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 active:translate-y-0 disabled:opacity-60"
+              onClick={handleLoginClick}
+              disabled={isCharging}
+              className="group relative mt-10 flex items-center justify-center gap-3 rounded-2xl border border-amber-300/30 bg-amber-400/10 px-10 py-4 text-base font-bold text-amber-100 shadow-[0_0_20px_rgba(246,196,83,0.2),inset_0_1px_0_#ffffff22] backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-amber-300/60 hover:bg-amber-400/20 hover:shadow-[0_0_40px_rgba(246,196,83,0.5)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:cursor-wait"
             >
-              <FiZap className="text-amber-300" />{" "}
-              {isPulling ? "Menyalakan lampu..." : "Nyalakan Lampu"}{" "}
-              <FiArrowRight className="transition-transform group-hover:translate-x-1" />
+              {/* Cakra Energi (Di luar tombol, tersedot masuk) */}
+              {isCharging && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  {/* Cincin luar */}
+                  <div
+                    className="absolute w-64 h-64 rounded-full border-2 border-amber-300/80 border-dashed rjpu-energy-gather"
+                    style={{ animationDelay: "0s" }}
+                  />
+                  {/* Cincin tengah */}
+                  <div
+                    className="absolute w-48 h-48 rounded-full border-2 border-yellow-200/80 border-dotted rjpu-energy-gather"
+                    style={{ animationDelay: "0.15s" }}
+                  />
+                  {/* Partikel dalam */}
+                  <div
+                    className="absolute w-32 h-32 rounded-full bg-amber-400/30 blur-md rjpu-energy-gather"
+                    style={{ animationDelay: "0.3s" }}
+                  />
+                </div>
+              )}
+              <FiZap
+                className={`text-amber-300 ${isCharging ? "animate-pulse scale-125" : ""} transition-all relative z-10`}
+                size={20}
+              />{" "}
+              <span className="relative z-10">
+                {isCharging ? "Mengumpulkan Energi..." : "Login"}
+              </span>{" "}
+              {!isCharging && (
+                <FiArrowRight className="relative z-10 transition-transform group-hover:translate-x-1" />
+              )}
             </button>
-            <span className="mt-4 text-xs text-slate-500">
-              Klik tali atau tombol di atas
-            </span>
           </section>
         )}
 
@@ -581,17 +557,22 @@ const LoginPage = ({ onLogin }) => {
               }}
             >
               <div className="relative rounded-[28px] border border-white/10 bg-[#0c1524]/70 p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,.85),inset_0_1px_0_rgba(255,255,255,.08)] backdrop-blur-xl sm:p-9">
-                {/* Glow aksen lembut di belakang kartu */}
                 <div
                   aria-hidden="true"
                   className="pointer-events-none absolute -inset-px -z-10 rounded-[28px] bg-gradient-to-br from-amber-200/25 via-transparent to-blue-400/20 opacity-70 blur-md"
                 />
                 <div className="mb-8 text-center">
-                  <div className="mx-auto mb-5 grid h-20 w-20 place-items-center rounded-[22px] border border-amber-200/20 bg-gradient-to-br from-[#1b2334] to-[#0c121e] shadow-[0_10px_24px_-12px_rgba(0,0,0,.9),inset_0_1px_0_rgba(255,255,255,.08)] [transform:translateZ(28px)]">
+                  {/* Logo dengan Pendaran Lampu Pijar di dalam Kartu Login */}
+                  <div className="relative mx-auto mb-6 flex h-24 w-24 items-center justify-center">
+                    {/* Efek Glow Lampu Pijar (Bulb Glow) */}
+                    <div className="absolute inset-0 rounded-full bg-amber-500/40 blur-xl mix-blend-screen animate-pulse" />
+                    <div className="absolute inset-2 rounded-full bg-yellow-300/30 blur-md mix-blend-screen" />
+
+                    {/* Gambar Logo Utama */}
                     <img
-                      src={LogoWeb}
+                      src={LogoAwal}
                       alt="Logo RJPU"
-                      className="h-14 w-14 object-contain drop-shadow-[0_0_12px_rgba(246,196,83,.35)]"
+                      className="relative z-10 h-20 w-20 object-contain drop-shadow-[0_0_20px_rgba(246,196,83,0.9)]"
                     />
                   </div>
                   <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold text-emerald-300 ring-1 ring-emerald-400/20">
