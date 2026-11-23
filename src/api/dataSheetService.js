@@ -1,7 +1,6 @@
 // DataSheetOperations.js
 import sheetsService from "./googleSheetService";
 import loginService from "./loginSheetService";
-
 class DataSheetOperations {
   constructor() {
     this.sheetName = "Data";
@@ -31,6 +30,7 @@ class DataSheetOperations {
       ASET: 22,
       DESCRIPTION_ASET: 23,
       KETERANGAN: 24,
+      PROFIL_RISK: 25,
     };
     this.columnNames = [
       "NO",
@@ -58,12 +58,12 @@ class DataSheetOperations {
       "ASET",
       "DESCRIPTION ASET",
       "KETERANGAN",
+      "PROFIL RISK",
     ];
-    this.dataRange = "A:Y";
-    this.lastColumnLetter = "Y";
+    this.dataRange = "A:Z";
+    this.lastColumnLetter = "Z";
     this.validKategori = ["Material", "Jasa", "Material & Jasa"];
   }
-
   // ============================================================
   // HELPERS
   // ============================================================
@@ -79,7 +79,6 @@ class DataSheetOperations {
       }
       const currentUser = loginService.getCurrentUser();
       const isAdmin = currentUser && currentUser.role === "Admin";
-
       if (isAdmin) {
         return {
           isAdmin: true,
@@ -101,11 +100,9 @@ class DataSheetOperations {
       };
     }
   }
-
   escapeRegex(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
-
   normalizeKodeAwal(kodeAwal) {
     if (!kodeAwal) return "";
     return kodeAwal
@@ -114,13 +111,11 @@ class DataSheetOperations {
       .toUpperCase()
       .replace(/^([A-Z])-/, "$1");
   }
-
   generateProgramId(kodeAwal, urutan) {
     if (!kodeAwal) return `MT-XX-${String(urutan).padStart(3, "0")}`;
     const normalized = this.normalizeKodeAwal(kodeAwal);
     return `MT-${normalized}-${String(urutan).padStart(3, "0")}`;
   }
-
   getNextSequenceForKode(kodeAwal, allData) {
     if (!kodeAwal) return 1;
     const normalized = this.normalizeKodeAwal(kodeAwal);
@@ -139,7 +134,6 @@ class DataSheetOperations {
     }
     return maxSeq + 1;
   }
-
   // Validasi kategori + harga. Return { valid, message, hargaMaterial, hargaJasa, hargaTotal }
   validateKategoriHarga(data) {
     const kategori = data.kategori || "";
@@ -152,7 +146,6 @@ class DataSheetOperations {
     }
     const hM = parseFloat(data.hargaMaterial) || 0;
     const hJ = parseFloat(data.hargaJasa) || 0;
-
     if (kategori === "Material" && hM <= 0) {
       return {
         valid: false,
@@ -171,7 +164,6 @@ class DataSheetOperations {
         message: "Harga Material dan Harga Jasa wajib diisi > 0",
       };
     }
-
     return {
       valid: true,
       hargaMaterial: hM,
@@ -179,7 +171,6 @@ class DataSheetOperations {
       hargaTotal: hM + hJ,
     };
   }
-
   // ============================================================
   // INIT
   // ============================================================
@@ -188,37 +179,33 @@ class DataSheetOperations {
     await this.ensureHeaders();
     await this.ensureNotificationSheet();
   }
-
   async ensureHeaders() {
     try {
       const rawData = await sheetsService.getRawData(
         this.sheetName,
         this.dataRange,
       );
-
-      if (rawData.length === 0) {
-        await sheetsService.writeData(`${this.sheetName}!A1:Y1`, [
+      if (!Array.isArray(rawData) || rawData.length === 0) {
+        await sheetsService.writeData(`${this.sheetName}!A1:Z1`, [
           this.columnNames,
         ]);
         console.log("✅ Headers created for Data sheet");
         return;
       }
 
+      // Upgrade 25 -> 26 kolom: cukup tulis Z1, jangan sentuh A:Y.
       const currentHeaders = rawData[0] || [];
-      if (currentHeaders.length < this.columnNames.length) {
-        console.log(
-          `🔄 Migrating headers from ${currentHeaders.length} to ${this.columnNames.length} columns...`,
-        );
-        await sheetsService.writeData(`${this.sheetName}!A1:Y1`, [
-          this.columnNames,
-        ]);
-        console.log("✅ Headers migrated successfully");
+      if (
+        String(currentHeaders[this.columns.PROFIL_RISK] ?? "").trim() !==
+        "PROFIL RISK"
+      ) {
+        await sheetsService.updateCell(`${this.sheetName}!Z1`, "PROFIL RISK");
+        console.log("✅ Header PROFIL RISK tersedia di Data!Z1");
       }
     } catch (error) {
       console.error("Error ensuring headers:", error);
     }
   }
-
   async ensureNotificationSheet() {
     try {
       const notificationExists =
@@ -243,6 +230,76 @@ class DataSheetOperations {
       console.error("Error ensuring notification sheet:", error);
     }
   }
+  // ============================================================
+  // REFERENSI PROFIL RISK (sheet Profile_Risk)
+  // Kolom A = No Profile Risk, kolom B = Keterangan.
+  // ============================================================
+  async getProfilRiskOptions() {
+    try {
+      await sheetsService.init();
+      if (!(await sheetsService.sheetExists("Profile_Risk"))) {
+        console.warn('Sheet "Profile_Risk" tidak ditemukan.');
+        return [];
+      }
+      const raw = await sheetsService.getRawData("Profile_Risk", "A:B");
+      if (!Array.isArray(raw) || raw.length === 0) return [];
+      // Header "No Profile Risk" tidak boleh ikut menjadi pilihan.
+      const headerA = String(raw[0]?.[0] ?? "")
+        .trim()
+        .toLowerCase();
+      const headerB = String(raw[0]?.[1] ?? "")
+        .trim()
+        .toLowerCase();
+      const startIndex =
+        headerA === "no profile risk" || headerB === "keterangan" ? 1 : 0;
+      return [
+        ...new Set(
+          raw
+            .slice(startIndex)
+            .map((row) => String(row?.[0] ?? "").trim())
+            .filter(Boolean),
+        ),
+      ];
+    } catch (error) {
+      console.error("Error loading Profile_Risk options:", error);
+      return [];
+    }
+  }
+
+  // Objek { value, label } jika butuh dropdown langsung dari service ini.
+  // Direkomendasikan memakai profilRiskService.getDropdownOptions() pada JSX.
+  async getProfilRiskDropdownOptions() {
+    try {
+      await sheetsService.init();
+      if (!(await sheetsService.sheetExists("Profile_Risk"))) return [];
+      const raw = await sheetsService.getRawData("Profile_Risk", "A:B");
+      if (!Array.isArray(raw) || raw.length === 0) return [];
+      const hA = String(raw[0]?.[0] ?? "")
+        .trim()
+        .toLowerCase();
+      const hB = String(raw[0]?.[1] ?? "")
+        .trim()
+        .toLowerCase();
+      const start = hA === "no profile risk" || hB === "keterangan" ? 1 : 0;
+      const seen = new Set();
+      return raw.slice(start).flatMap((row) => {
+        const value = String(row?.[0] ?? "").trim();
+        const keterangan = String(row?.[1] ?? "").trim();
+        if (!value || seen.has(value)) return [];
+        seen.add(value);
+        return [
+          {
+            value,
+            label: keterangan ? `${value} — ${keterangan}` : value,
+            raw: { noProfileRisk: value, keterangan },
+          },
+        ];
+      });
+    } catch (error) {
+      console.error("Error loading Profile_Risk dropdown:", error);
+      return [];
+    }
+  }
 
   // ============================================================
   // NOTIFICATION
@@ -252,7 +309,6 @@ class DataSheetOperations {
     const random = Math.floor(Math.random() * 1000);
     return `NOTIF-${timestamp}-${random}`;
   }
-
   async addNotification(programNo, programKerja, pengirim, bidangPengirim) {
     try {
       const notificationId = this.generateNotificationId();
@@ -292,7 +348,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   async getAllNotifications() {
     await this.ensureNotificationSheet();
     try {
@@ -302,7 +357,6 @@ class DataSheetOperations {
         "A:J",
       );
       if (!notifications || notifications.length === 0) return [];
-
       let notificationList = [];
       const firstRow = notifications[0];
       const isHeaderRow =
@@ -310,7 +364,6 @@ class DataSheetOperations {
         (firstRow[0] === "ID_NOTIF" ||
           firstRow[0]?.toString().toUpperCase() === "ID_NOTIF");
       const startIndex = isHeaderRow ? 1 : 0;
-
       for (let i = startIndex; i < notifications.length; i++) {
         const row = notifications[i];
         if (!row || row.length === 0) continue;
@@ -343,7 +396,6 @@ class DataSheetOperations {
           });
         }
       }
-
       if (!userFilter.isAdmin) {
         return notificationList.filter(
           (notif) => notif.bidangPengirim === userFilter.bidangFilter,
@@ -355,12 +407,10 @@ class DataSheetOperations {
       return [];
     }
   }
-
   async getUnreadNotifications() {
     const all = await this.getAllNotifications();
     return all.filter((n) => n.status === "UNREAD");
   }
-
   async markNotificationAsRead(notificationId, readerName) {
     try {
       const all = await sheetsService.getRawData("Notification", "A:J");
@@ -391,7 +441,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   async markAllNotificationsAsRead(programNo, readerName) {
     try {
       const all = await sheetsService.getRawData("Notification", "A:J");
@@ -424,7 +473,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   async deleteNotificationsByProgramNo(programNo) {
     try {
       const all = await sheetsService.getRawData("Notification", "A:J");
@@ -448,28 +496,23 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   // ============================================================
   // GET ALL DATA
   // ============================================================
   async getAllData() {
     await this.init();
-
     try {
       const data = await sheetsService.getAllData(
         this.sheetName,
         this.dataRange,
       );
       const userFilter = await this.getUserFilter();
-
       const isObjectFormat =
         data.length > 0 &&
         !Array.isArray(data[0]) &&
         typeof data[0] === "object";
       const isArrayFormat = data.length > 0 && Array.isArray(data[0]);
-
       let processedData = [];
-
       if (isObjectFormat) {
         processedData = data.map((row) => ({
           no: row["NO"] || "",
@@ -497,6 +540,7 @@ class DataSheetOperations {
           aset: row["ASET"] || "",
           descriptionAset: row["DESCRIPTION ASET"] || "",
           keterangan: row["KETERANGAN"] || "",
+          profilRisk: row["PROFIL RISK"] || "",
         }));
       } else if (isArrayFormat) {
         processedData = data.map((row) => ({
@@ -525,6 +569,7 @@ class DataSheetOperations {
           aset: row[this.columns.ASET] || "",
           descriptionAset: row[this.columns.DESCRIPTION_ASET] || "",
           keterangan: row[this.columns.KETERANGAN] || "",
+          profilRisk: row[this.columns.PROFIL_RISK] || "",
         }));
       } else {
         processedData = data.map((row) => {
@@ -561,30 +606,27 @@ class DataSheetOperations {
               descriptionAset:
                 row["DESCRIPTION ASET"] || row.descriptionAset || "",
               keterangan: row.KETERANGAN || row.keterangan || "",
+              profilRisk: row["PROFIL RISK"] || row.profilRisk || "",
             };
           }
           return {};
         });
       }
-
       let filteredData = processedData.filter(
         (item) =>
           item.programKerja && item.programKerja.toString().trim() !== "",
       );
-
       if (!userFilter.isAdmin && userFilter.bidangFilter) {
         filteredData = filteredData.filter(
           (item) => item.bidang === userFilter.bidangFilter,
         );
       }
-
       return filteredData;
     } catch (error) {
       console.error("Error getting all data:", error);
       return [];
     }
   }
-
   async getRawData() {
     await this.init();
     try {
@@ -594,7 +636,6 @@ class DataSheetOperations {
       return [];
     }
   }
-
   // ============================================================
   // GETTERS
   // ============================================================
@@ -614,22 +655,18 @@ class DataSheetOperations {
     }
     return data;
   }
-
   async getDataByYear(tahun) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.tahun === tahun.toString());
   }
-
   async getDataByKluster(kluster) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.klusterProgram === kluster);
   }
-
   async getDataBySumberAnggaran(sumber) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.sumberAnggaran === sumber);
   }
-
   async getDataByBidang(bidang) {
     const userFilter = await this.getUserFilter();
     if (!userFilter.isAdmin && bidang !== userFilter.bidangFilter) {
@@ -641,22 +678,18 @@ class DataSheetOperations {
     const allData = await this.getAllData();
     return allData.filter((item) => item.bidang === bidang);
   }
-
   async getDataByKategori(kategori) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.kategori === kategori);
   }
-
   async getDataByAset(aset) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.aset === aset);
   }
-
   async getDataByTkdn(tkdn) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.tkdn === tkdn);
   }
-
   async hasAccessToData(no) {
     const userFilter = await this.getUserFilter();
     if (userFilter.isAdmin) return true;
@@ -664,14 +697,12 @@ class DataSheetOperations {
     if (!data) return false;
     return data.bidang === userFilter.bidangFilter;
   }
-
   // ============================================================
   // ADD DATA
   // ============================================================
   async addData(data) {
     await this.init();
     const userFilter = await this.getUserFilter();
-
     if (!userFilter.isAdmin) {
       if (!data.bidang) {
         data.bidang = userFilter.bidangFilter;
@@ -682,13 +713,11 @@ class DataSheetOperations {
         };
       }
     }
-
     // Validasi kategori & harga
     const v = this.validateKategoriHarga(data);
     if (!v.valid) {
       return { success: false, message: v.message };
     }
-
     // Validasi strategi
     const kodeAwal = data.strategisRjpu || "";
     if (!kodeAwal) {
@@ -697,12 +726,10 @@ class DataSheetOperations {
         message: "Strategis RJPU wajib dipilih",
       };
     }
-
     try {
       const allData = await this.getAllData();
       const nextSeq = this.getNextSequenceForKode(kodeAwal, allData);
       const programId = this.generateProgramId(kodeAwal, nextSeq);
-
       const newRow = [
         programId,
         data.programKerja || "",
@@ -729,25 +756,22 @@ class DataSheetOperations {
         data.aset || "",
         data.descriptionAset || "",
         data.keterangan || "",
+        data.profilRisk || "",
       ];
-
       const rowCount = await sheetsService.getRowCount(this.sheetName);
       const startRow = rowCount + 2;
-      const range = `${this.sheetName}!A${startRow}:Y${startRow}`;
+      const range = `${this.sheetName}!A${startRow}:Z${startRow}`;
       const result = await sheetsService.writeData(range, [newRow]);
-
       const currentUser = loginService.getCurrentUser();
       const pengirim = currentUser ? currentUser.nama : "System";
       const bidangPengirim =
         data.bidang || userFilter.bidangFilter || "Unknown";
-
       await this.addNotification(
         programId,
         data.programKerja,
         pengirim,
         bidangPengirim,
       );
-
       return {
         success: true,
         message: "Data added successfully",
@@ -760,23 +784,19 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   // ============================================================
   // UPDATE DATA
   // ============================================================
   async updateData(no, updatedData) {
     const hasAccess = await this.hasAccessToData(no);
     const userFilter = await this.getUserFilter();
-
     if (!hasAccess && !userFilter.isAdmin) {
       return {
         success: false,
         message: "Access denied: You can only update data from your bidang",
       };
     }
-
     await this.init();
-
     try {
       const allDataRaw = await sheetsService.getRawData(
         this.sheetName,
@@ -796,10 +816,8 @@ class DataSheetOperations {
       }
       if (rowIndex === -1)
         return { success: false, message: `Data with NO ${no} not found` };
-
       const sheetRow = rowIndex + 1;
       const currentRow = allDataRaw[rowIndex] || [];
-
       if (
         !userFilter.isAdmin &&
         updatedData.bidang &&
@@ -810,24 +828,20 @@ class DataSheetOperations {
           message: "Access denied: You cannot change the bidang field",
         };
       }
-
       const getVal = (key, colIndex) =>
         updatedData[key] !== undefined
           ? updatedData[key]
           : currentRow[colIndex] || "";
-
       // Gabungkan kategori & harga dari current atau updated
       const mergedData = {
         kategori: getVal("kategori", this.columns.KATEGORI),
         hargaMaterial: getVal("hargaMaterial", this.columns.HARGA_MATERIAL),
         hargaJasa: getVal("hargaJasa", this.columns.HARGA_JASA),
       };
-
       const v = this.validateKategoriHarga(mergedData);
       if (!v.valid) {
         return { success: false, message: v.message };
       }
-
       const updatedRow = [
         no.toString(),
         getVal("programKerja", this.columns.PROGRAM_KERJA),
@@ -854,9 +868,9 @@ class DataSheetOperations {
         getVal("aset", this.columns.ASET),
         getVal("descriptionAset", this.columns.DESCRIPTION_ASET),
         getVal("keterangan", this.columns.KETERANGAN),
+        getVal("profilRisk", this.columns.PROFIL_RISK),
       ];
-
-      const range = `${this.sheetName}!A${sheetRow}:Y${sheetRow}`;
+      const range = `${this.sheetName}!A${sheetRow}:Z${sheetRow}`;
       const result = await sheetsService.writeData(range, [updatedRow]);
       return {
         success: true,
@@ -868,23 +882,19 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   // ============================================================
   // DELETE DATA
   // ============================================================
   async deleteData(no) {
-    const hasAccess = await this.hasAccessToData(no);
     const userFilter = await this.getUserFilter();
-
-    if (!hasAccess && !userFilter.isAdmin) {
+    if (!userFilter.isAdmin) {
       return {
         success: false,
-        message: "Access denied: You can only delete data from your bidang",
+        message:
+          "Akses ditolak: hanya Admin yang boleh menghapus atau mengarsipkan program",
       };
     }
-
     await this.init();
-
     try {
       const allDataRaw = await sheetsService.getRawData(
         this.sheetName,
@@ -904,16 +914,13 @@ class DataSheetOperations {
       }
       if (rowIndex === -1)
         return { success: false, message: `Data with NO ${no} not found` };
-
       await this.deleteNotificationsByProgramNo(no);
-
       const sheetRow = rowIndex + 1;
       const emptyRow = Array(this.columnNames.length).fill("");
       await sheetsService.writeData(
-        `${this.sheetName}!A${sheetRow}:Y${sheetRow}`,
+        `${this.sheetName}!A${sheetRow}:Z${sheetRow}`,
         [emptyRow],
       );
-
       await this.renumberData();
       return {
         success: true,
@@ -924,7 +931,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   async renumberData() {
     try {
       const allDataRaw = await sheetsService.getRawData(
@@ -932,28 +938,22 @@ class DataSheetOperations {
         this.dataRange,
       );
       if (!allDataRaw || allDataRaw.length <= 1) return true;
-
       const counters = {};
       const updates = [];
-
       for (let i = 1; i < allDataRaw.length; i++) {
         const row = allDataRaw[i];
         const hasData = row && row.some((c) => c && c.toString().trim() !== "");
         if (!hasData) continue;
-
         const kodeAwal = row[this.columns.STRATEGIS_RJPU];
         if (!kodeAwal) continue;
-
         if (!counters[kodeAwal]) counters[kodeAwal] = 1;
         const seq = counters[kodeAwal]++;
         const newId = this.generateProgramId(kodeAwal, seq);
         const currentId = row[this.columns.NO];
-
         if (currentId !== newId) {
           updates.push({ rowIndex: i, newId });
         }
       }
-
       for (const u of updates) {
         await sheetsService.updateCell(
           `${this.sheetName}!A${u.rowIndex + 1}`,
@@ -966,23 +966,19 @@ class DataSheetOperations {
       return false;
     }
   }
-
   // ============================================================
   // MOVE TO DROP
   // ============================================================
   async moveToDrop(no, keterangan = "DROP") {
-    const hasAccess = await this.hasAccessToData(no);
     const userFilter = await this.getUserFilter();
-
-    if (!hasAccess && !userFilter.isAdmin) {
+    if (!userFilter.isAdmin) {
       return {
         success: false,
-        message: "Access denied: You can only move data from your bidang",
+        message:
+          "Akses ditolak: hanya Admin yang boleh menghapus atau mengarsipkan program",
       };
     }
-
     await this.init();
-
     try {
       const allDataRaw = await sheetsService.getRawData(
         this.sheetName,
@@ -991,7 +987,6 @@ class DataSheetOperations {
       if (!allDataRaw || allDataRaw.length <= 1) {
         return { success: false, message: `No data found in sheet` };
       }
-
       let rowIndex = -1;
       let rowData = null;
       for (let i = 1; i < allDataRaw.length; i++) {
@@ -1012,7 +1007,6 @@ class DataSheetOperations {
           message: `Data with NO ${no} not found in sheet`,
         };
       }
-
       const dropDate = new Date().toLocaleString("id-ID", {
         year: "numeric",
         month: "2-digit",
@@ -1021,7 +1015,6 @@ class DataSheetOperations {
         minute: "2-digit",
         second: "2-digit",
       });
-
       const dropRow = [
         rowData[this.columns.NO] || "",
         rowData[this.columns.PROGRAM_KERJA] || "",
@@ -1051,11 +1044,11 @@ class DataSheetOperations {
         dropDate,
         keterangan,
         no.toString(),
+        rowData[this.columns.PROFIL_RISK] || "", // AC: preserve existing Drop Z:AB
       ];
-
       const dropExists = await sheetsService.sheetExists("Drop");
       if (!dropExists) {
-        await sheetsService.writeData("Drop!A1:AB1", [
+        await sheetsService.writeData("Drop!A1:AC1", [
           [
             "NO",
             "PROGRAM KERJA",
@@ -1085,10 +1078,13 @@ class DataSheetOperations {
             "DROP DATE",
             "DROP STATUS",
             "ORIGINAL NO",
+            "PROFIL RISK",
           ],
         ]);
+      } else {
+        // Migrasi aman: kolom lama Z=DROP DATE, AA=DROP STATUS, AB=ORIGINAL NO.
+        await sheetsService.updateCell("Drop!AC1", "PROFIL RISK");
       }
-
       const appendResult = await sheetsService.appendData("Drop", [dropRow]);
       if (!appendResult.success) {
         return {
@@ -1096,16 +1092,13 @@ class DataSheetOperations {
           message: "Failed to move data to Drop sheet",
         };
       }
-
       await this.deleteNotificationsByProgramNo(no);
-
       const sheetRow = rowIndex + 1;
       const emptyRow = Array(this.columnNames.length).fill("");
       await sheetsService.writeData(
-        `${this.sheetName}!A${sheetRow}:Y${sheetRow}`,
+        `${this.sheetName}!A${sheetRow}:Z${sheetRow}`,
         [emptyRow],
       );
-
       await this.renumberData();
       return {
         success: true,
@@ -1116,7 +1109,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   // ============================================================
   // SEARCH & SUMMARY
   // ============================================================
@@ -1129,7 +1121,6 @@ class DataSheetOperations {
       ),
     );
   }
-
   async getSummaryByYear() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1143,7 +1134,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getSummaryByKluster() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1157,7 +1147,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getSummaryBySumberAnggaran() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1171,7 +1160,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getSummaryByBidang() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1186,7 +1174,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getSummaryByKategori() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1208,7 +1195,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getSummaryByAset() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1222,7 +1208,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getFileLink(no) {
     const data = await this.getDataByNo(no);
     if (data && data.file)
@@ -1236,7 +1221,6 @@ class DataSheetOperations {
       message: `No file found for program with NO ${no}`,
     };
   }
-
   async updateFileLink(no, driveFileLink) {
     return await this.updateData(no, { file: driveFileLink });
   }
@@ -1262,22 +1246,22 @@ class DataSheetOperations {
     return await this.updateData(no, { descriptionAset });
   }
 
+  async updateProfilRisk(no, profilRisk) {
+    return await this.updateData(no, { profilRisk });
+  }
   // ============================================================
   // BULK INSERT
   // ============================================================
   async bulkInsert(dataArray) {
     await this.init();
     const userFilter = await this.getUserFilter();
-
     try {
       const allData = await this.getAllData();
       const counters = {};
       const rows = [];
       const addedPrograms = [];
-
       for (let i = 0; i < dataArray.length; i++) {
         const item = dataArray[i];
-
         if (!userFilter.isAdmin) {
           if (!item.bidang) item.bidang = userFilter.bidangFilter;
           else if (item.bidang !== userFilter.bidangFilter) {
@@ -1287,12 +1271,10 @@ class DataSheetOperations {
             };
           }
         }
-
         const v = this.validateKategoriHarga(item);
         if (!v.valid) {
           return { success: false, message: `Baris ${i + 1}: ${v.message}` };
         }
-
         const kodeAwal = item.strategisRjpu;
         if (!kodeAwal) {
           return {
@@ -1300,12 +1282,10 @@ class DataSheetOperations {
             message: `Baris ${i + 1}: Strategis RJPU wajib diisi`,
           };
         }
-
         if (!counters[kodeAwal])
           counters[kodeAwal] = this.getNextSequenceForKode(kodeAwal, allData);
         const seq = counters[kodeAwal]++;
         const programId = this.generateProgramId(kodeAwal, seq);
-
         rows.push([
           programId,
           item.programKerja || "",
@@ -1332,24 +1312,21 @@ class DataSheetOperations {
           item.aset || "",
           item.descriptionAset || "",
           item.keterangan || "",
+          item.profilRisk || "",
         ]);
-
         addedPrograms.push({
           programId,
           programKerja: item.programKerja,
           bidang: item.bidang || userFilter.bidangFilter,
         });
       }
-
       const rowCount = await sheetsService.getRowCount(this.sheetName);
       const startRow = rowCount + 2;
       const endRow = rowCount + 1 + dataArray.length;
-      const range = `${this.sheetName}!A${startRow}:Y${endRow}`;
+      const range = `${this.sheetName}!A${startRow}:Z${endRow}`;
       const result = await sheetsService.writeData(range, rows);
-
       const currentUser = loginService.getCurrentUser();
       const pengirim = currentUser ? currentUser.nama : "System";
-
       for (const p of addedPrograms) {
         await this.addNotification(
           p.programId,
@@ -1358,7 +1335,6 @@ class DataSheetOperations {
           p.bidang,
         );
       }
-
       return {
         success: true,
         message: `${dataArray.length} data added successfully`,
@@ -1369,7 +1345,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   async exportToJSON() {
     const allData = await this.getAllData();
     const userFilter = await this.getUserFilter();
@@ -1384,7 +1359,6 @@ class DataSheetOperations {
       },
     };
   }
-
   async getPaginatedData(page = 1, limit = 10) {
     const allData = await this.getAllData();
     const start = (page - 1) * limit;
@@ -1398,7 +1372,6 @@ class DataSheetOperations {
       limit,
     };
   }
-
   async getUserDataAccessInfo() {
     const userFilter = await this.getUserFilter();
     const allData = await this.getAllData();
@@ -1413,11 +1386,9 @@ class DataSheetOperations {
       })),
     };
   }
-
   async getStatistics() {
     const allData = await this.getAllData();
     const userFilter = await this.getUserFilter();
-
     const totalPrograms = allData.length;
     const totalBudget = allData.reduce(
       (sum, item) => sum + (parseFloat(item.hargaTotal) || 0),
@@ -1431,7 +1402,6 @@ class DataSheetOperations {
       (sum, item) => sum + (parseFloat(item.hargaJasa) || 0),
       0,
     );
-
     const years = [
       ...new Set(allData.map((item) => item.tahun).filter(Boolean)),
     ];
@@ -1447,7 +1417,6 @@ class DataSheetOperations {
     const asets = [
       ...new Set(allData.map((item) => item.aset).filter(Boolean)),
     ];
-
     return {
       success: true,
       statistics: {
@@ -1472,7 +1441,6 @@ class DataSheetOperations {
       },
     };
   }
-
   validateData(data) {
     const errors = [];
     if (!data.programKerja || data.programKerja.trim() === "")
@@ -1490,6 +1458,5 @@ class DataSheetOperations {
     return { isValid: errors.length === 0, errors };
   }
 }
-
 const dataSheetOperations = new DataSheetOperations();
 export default dataSheetOperations;

@@ -31,6 +31,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import dataSheet from "../../api/dataSheetService";
 import assetService from "../../api/asetSheetService";
 import strategiService from "../../api/strategiSheetService";
+import profilRiskService from "../../api/profileRiskService";
 
 // ==================== Skeletons ====================
 const SkeletonTableRow = () => (
@@ -95,6 +96,12 @@ const SkeletonStatsCard = () => (
 
 // ==================== Main Component ====================
 const ProgramData = ({ userRole }) => {
+  // Hak akses UI: User boleh edit; hanya Admin boleh menghapus / mengarsipkan.
+  const normalizedRole = String(userRole || "")
+    .trim()
+    .toLowerCase();
+  const isAdmin = normalizedRole === "admin";
+  const canEdit = isAdmin || normalizedRole === "user";
   // Data
   const [programs, setPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -105,6 +112,8 @@ const ProgramData = ({ userRole }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [filterYear, setFilterYear] = useState("all");
   const [filterCluster, setFilterCluster] = useState("all");
+  const [filterBidang, setFilterBidang] = useState("all");
+  const [filterKeterangan, setFilterKeterangan] = useState("all");
   const [viewMode, setViewMode] = useState("table");
   const [selectedPrograms, setSelectedPrograms] = useState([]);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
@@ -122,8 +131,11 @@ const ProgramData = ({ userRole }) => {
   // Master data
   const [assets, setAssets] = useState([]);
   const [strategis, setStrategis] = useState([]);
+  const [profilRiskOptions, setProfilRiskOptions] = useState([]);
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [loadingStrategis, setLoadingStrategis] = useState(false);
+  const [loadingProfilRisk, setLoadingProfilRisk] = useState(false);
+  const [profilRiskError, setProfilRiskError] = useState("");
 
   // Aset searchable
   const [assetSearch, setAssetSearch] = useState("");
@@ -186,6 +198,18 @@ const ProgramData = ({ userRole }) => {
   const kategoriOptions = ["Material", "Jasa", "Material & Jasa"];
   const tkdnOptions = ["Ya", "Tidak"];
 
+  // Keterangan (kolom Y) dipakai sebagai status monitoring program.
+  // "Drop" hanya mengubah status; pemindahan ke sheet Drop tetap melalui aksi Hapus/Arsip.
+  const keteranganOptions = [
+    "Belum Dimulai",
+    "On Progress",
+    "Diskusi",
+    "Lanjut",
+    "Ditunda",
+    "Selesai",
+    "Drop",
+  ];
+
   // Effects
   useEffect(() => {
     loadPrograms();
@@ -195,18 +219,54 @@ const ProgramData = ({ userRole }) => {
   const loadMasterData = async () => {
     setLoadingAssets(true);
     setLoadingStrategis(true);
+    setLoadingProfilRisk(true);
+    setProfilRiskError("");
+
+    // Setiap master independen: kegagalan Profile_Risk tidak mengganggu Aset/Strategi.
+    const [assetResult, strategiResult, riskResult] = await Promise.allSettled([
+      assetService.getAllAssets(),
+      strategiService.getAllStrategi(),
+      profilRiskService.getDropdownOptions(),
+    ]);
+
+    if (assetResult.status === "fulfilled") {
+      setAssets(assetResult.value || []);
+    } else {
+      console.error("Failed loading aset:", assetResult.reason);
+    }
+    if (strategiResult.status === "fulfilled") {
+      setStrategis(strategiResult.value || []);
+    } else {
+      console.error("Failed loading strategi:", strategiResult.reason);
+    }
+    if (riskResult.status === "fulfilled") {
+      setProfilRiskOptions(riskResult.value || []);
+    } else {
+      console.error("Failed loading Profile_Risk:", riskResult.reason);
+      setProfilRiskError(
+        "Gagal mengambil Profile Risk. Periksa akses Google Sheets.",
+      );
+    }
+
+    setLoadingAssets(false);
+    setLoadingStrategis(false);
+    setLoadingProfilRisk(false);
+  };
+
+  const refreshProfilRisk = async () => {
+    setLoadingProfilRisk(true);
+    setProfilRiskError("");
     try {
-      const [assetList, strategiList] = await Promise.all([
-        assetService.getAllAssets(),
-        strategiService.getAllStrategi(),
-      ]);
-      setAssets(assetList || []);
-      setStrategis(strategiList || []);
-    } catch (err) {
-      console.error("Failed loading master data:", err);
+      profilRiskService.invalidateCache();
+      const options = await profilRiskService.getDropdownOptions();
+      setProfilRiskOptions(options || []);
+    } catch (error) {
+      console.error("Failed refreshing Profile_Risk:", error);
+      setProfilRiskError(
+        "Gagal mengambil Profile Risk. Periksa akses Google Sheets.",
+      );
     } finally {
-      setLoadingAssets(false);
-      setLoadingStrategis(false);
+      setLoadingProfilRisk(false);
     }
   };
 
@@ -233,6 +293,7 @@ const ProgramData = ({ userRole }) => {
     setFormData({
       programKerja: "",
       alasanProgram: "",
+      profilRisk: "",
       klusterProgram: "",
       oemNonOem: "",
       dasarInputProgram: "",
@@ -254,14 +315,18 @@ const ProgramData = ({ userRole }) => {
       strategisRjpu: "",
       aset: "",
       descriptionAset: "",
-      keterangan: "",
+      keterangan: "Belum Dimulai",
     });
     setShowModal(true);
   };
 
   const handleEdit = (program) => {
+    if (!canEdit) {
+      showToast("Anda tidak memiliki izin mengedit program", "error");
+      return;
+    }
     setEditingProgram(program);
-    setFormData({ ...program });
+    setFormData({ ...program, profilRisk: program.profilRisk || "" });
     setShowModal(true);
   };
 
@@ -310,11 +375,19 @@ const ProgramData = ({ userRole }) => {
   }, [assets, assetSearch]);
 
   const confirmDelete = (no, programName) => {
+    if (!isAdmin) {
+      showToast("Hanya Admin yang boleh menghapus program", "error");
+      return;
+    }
     setProgramToDelete({ no, programName });
     setShowDeleteConfirm(true);
   };
 
   const executeDelete = async () => {
+    if (!isAdmin) {
+      showToast("Hanya Admin yang boleh memindahkan program ke Drop", "error");
+      return;
+    }
     if (!programToDelete) return;
     setLoadingDelete(true);
     try {
@@ -339,6 +412,10 @@ const ProgramData = ({ userRole }) => {
   };
 
   const handleBulkDelete = async () => {
+    if (!isAdmin) {
+      showToast("Hanya Admin yang boleh menghapus massal", "error");
+      return;
+    }
     if (selectedPrograms.length === 0) return;
     setLoadingBulkDelete(true);
     let ok = 0;
@@ -368,12 +445,14 @@ const ProgramData = ({ userRole }) => {
   };
 
   const toggleSelectProgram = (no) => {
+    if (!isAdmin) return;
     setSelectedPrograms((prev) =>
       prev.includes(no) ? prev.filter((n) => n !== no) : [...prev, no],
     );
   };
 
   const toggleSelectAll = () => {
+    if (!isAdmin) return;
     if (selectedPrograms.length === paginatedPrograms.length) {
       setSelectedPrograms([]);
     } else {
@@ -382,6 +461,10 @@ const ProgramData = ({ userRole }) => {
   };
 
   const handleSave = async () => {
+    if (editingProgram && !canEdit) {
+      showToast("Anda tidak memiliki izin mengedit program", "error");
+      return;
+    }
     if (!formData.programKerja) {
       showToast("Program Kerja wajib diisi", "error");
       return;
@@ -494,6 +577,7 @@ const ProgramData = ({ userRole }) => {
       "ASET",
       "DESCRIPTION ASET",
       "KETERANGAN",
+      "PROFIL RISK",
     ];
     const fieldMap = {
       NO: "no",
@@ -521,6 +605,7 @@ const ProgramData = ({ userRole }) => {
       ASET: "aset",
       "DESCRIPTION ASET": "descriptionAset",
       KETERANGAN: "keterangan",
+      "PROFIL RISK": "profilRisk",
     };
     const rows = data.map((item) =>
       headers.map((h) => item[fieldMap[h]] || ""),
@@ -578,6 +663,25 @@ const ProgramData = ({ userRole }) => {
     return ["all", ...clusters];
   }, [programs]);
 
+  // Pilihan bidang hanya yang ada pada data yang dapat diakses user.
+  const filterBidangOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          programs.map((p) => String(p.bidang || "").trim()).filter(Boolean),
+        ),
+      ].sort((a, b) => a.localeCompare(b, "id")),
+    [programs],
+  );
+
+  // Nilai lama yang sebelumnya berupa keterangan bebas tetap bisa dicari/filter.
+  const filterKeteranganOptions = useMemo(() => {
+    const existing = programs
+      .map((p) => String(p.keterangan || "").trim())
+      .filter(Boolean);
+    return [...new Set([...keteranganOptions, ...existing])];
+  }, [programs]);
+
   const getFilteredPrograms = useCallback(() => {
     let filtered = programs;
     if (searchTerm) {
@@ -591,15 +695,40 @@ const ProgramData = ({ userRole }) => {
           p.bidang?.toLowerCase().includes(term) ||
           p.kategori?.toLowerCase().includes(term) ||
           p.aset?.toLowerCase().includes(term) ||
-          p.strategisRjpu?.toLowerCase().includes(term),
+          p.strategisRjpu?.toLowerCase().includes(term) ||
+          String(p.keterangan || "")
+            .toLowerCase()
+            .includes(term) ||
+          String(p.profilRisk || "")
+            .toLowerCase()
+            .includes(term),
       );
     }
     if (filterYear !== "all")
       filtered = filtered.filter((p) => p.tahun === filterYear);
     if (filterCluster !== "all")
       filtered = filtered.filter((p) => p.klusterProgram === filterCluster);
+    if (filterBidang !== "all")
+      filtered = filtered.filter((p) =>
+        filterBidang === "__empty__"
+          ? !String(p.bidang || "").trim()
+          : String(p.bidang || "").trim() === filterBidang,
+      );
+    if (filterKeterangan !== "all")
+      filtered = filtered.filter((p) =>
+        filterKeterangan === "__empty__"
+          ? !String(p.keterangan || "").trim()
+          : String(p.keterangan || "").trim() === filterKeterangan,
+      );
     return filtered;
-  }, [programs, searchTerm, filterYear, filterCluster]);
+  }, [
+    programs,
+    searchTerm,
+    filterYear,
+    filterCluster,
+    filterBidang,
+    filterKeterangan,
+  ]);
 
   const filteredPrograms = getFilteredPrograms();
   const totalPages = Math.ceil(filteredPrograms.length / itemsPerPage);
@@ -621,6 +750,9 @@ const ProgramData = ({ userRole }) => {
     setSearchTerm("");
     setFilterYear("all");
     setFilterCluster("all");
+    setFilterBidang("all");
+    setFilterKeterangan("all");
+    setSelectedPrograms([]);
     setCurrentPage(1);
   };
 
@@ -645,6 +777,19 @@ const ProgramData = ({ userRole }) => {
       2025: "bg-purple-100 text-purple-700",
     };
     return c[year] || "bg-gray-100 text-gray-700";
+  };
+
+  const getKeteranganBadge = (status) => {
+    const classes = {
+      "Belum Dimulai": "bg-slate-100 text-slate-600",
+      "On Progress": "bg-sky-100 text-sky-700",
+      Diskusi: "bg-violet-100 text-violet-700",
+      Lanjut: "bg-indigo-100 text-indigo-700",
+      Ditunda: "bg-amber-100 text-amber-700",
+      Selesai: "bg-emerald-100 text-emerald-700",
+      Drop: "bg-red-100 text-red-700",
+    };
+    return classes[status] || "bg-gray-100 text-gray-600";
   };
 
   const getKategoriBadge = (kategori) => {
@@ -708,7 +853,7 @@ const ProgramData = ({ userRole }) => {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {[...Array(11)].map((_, i) => (
+                  {[...Array(13)].map((_, i) => (
                     <th key={i} className="px-4 py-4">
                       <div className="h-3 bg-gray-200 rounded w-12 animate-pulse" />
                     </th>
@@ -775,7 +920,7 @@ const ProgramData = ({ userRole }) => {
 
       {/* Delete Confirm */}
       <AnimatePresence>
-        {showDeleteConfirm && programToDelete && (
+        {isAdmin && showDeleteConfirm && programToDelete && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -884,7 +1029,7 @@ const ProgramData = ({ userRole }) => {
                 {viewMode === "table" ? "Grid View" : "Table View"}
               </span>
             </button>
-            {userRole === "Admin" && (
+            {isAdmin && (
               <button
                 onClick={() => (window.location.href = "/dashboard/drop-data")}
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-orange-600 text-white rounded-2xl shadow-sm hover:shadow-md transition-all"
@@ -893,7 +1038,7 @@ const ProgramData = ({ userRole }) => {
                 <span className="hidden sm:inline">Program Drop</span>
               </button>
             )}
-            {userRole === "Admin" && selectedPrograms.length > 0 && (
+            {isAdmin && selectedPrograms.length > 0 && (
               <motion.button
                 initial={{ scale: 0.9 }}
                 animate={{ scale: 1 }}
@@ -1008,11 +1153,12 @@ const ProgramData = ({ userRole }) => {
               <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Cari program, kluster, tahun, kategori, aset, strategi..."
+                placeholder="Cari program, bidang, status, aset, strategi..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
                   setCurrentPage(1);
+                  setSelectedPrograms([]);
                 }}
                 className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent transition-all"
               />
@@ -1022,6 +1168,7 @@ const ProgramData = ({ userRole }) => {
               onChange={(e) => {
                 setFilterYear(e.target.value);
                 setCurrentPage(1);
+                setSelectedPrograms([]);
               }}
               className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400"
             >
@@ -1039,6 +1186,7 @@ const ProgramData = ({ userRole }) => {
               onChange={(e) => {
                 setFilterCluster(e.target.value);
                 setCurrentPage(1);
+                setSelectedPrograms([]);
               }}
               className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400"
             >
@@ -1083,7 +1231,71 @@ const ProgramData = ({ userRole }) => {
               </button>
             </div>
           </div>
-          {(searchTerm || filterYear !== "all" || filterCluster !== "all") && (
+
+          {/* Filter tambahan: Bidang dan Status Keterangan */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+            <div>
+              <label
+                htmlFor="filter-bidang"
+                className="block text-xs font-semibold text-slate-500 mb-1"
+              >
+                Filter Bidang
+              </label>
+              <select
+                id="filter-bidang"
+                value={filterBidang}
+                onChange={(e) => {
+                  setFilterBidang(e.target.value);
+                  setCurrentPage(1);
+                  setSelectedPrograms([]);
+                }}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400"
+              >
+                <option value="all">Semua Bidang</option>
+                {programs.some((p) => !String(p.bidang || "").trim()) && (
+                  <option value="__empty__">Tanpa Bidang</option>
+                )}
+                {filterBidangOptions.map((bidang) => (
+                  <option key={bidang} value={bidang}>
+                    {bidang}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="filter-keterangan"
+                className="block text-xs font-semibold text-slate-500 mb-1"
+              >
+                Filter Keterangan / Status
+              </label>
+              <select
+                id="filter-keterangan"
+                value={filterKeterangan}
+                onChange={(e) => {
+                  setFilterKeterangan(e.target.value);
+                  setCurrentPage(1);
+                  setSelectedPrograms([]);
+                }}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400"
+              >
+                <option value="all">Semua Status</option>
+                {programs.some((p) => !String(p.keterangan || "").trim()) && (
+                  <option value="__empty__">Belum Ada Status</option>
+                )}
+                {filterKeteranganOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {(searchTerm ||
+            filterYear !== "all" ||
+            filterCluster !== "all" ||
+            filterBidang !== "all" ||
+            filterKeterangan !== "all") && (
             <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
               <FiFilter size={14} />
               <span>Ditemukan {filteredPrograms.length} program</span>
@@ -1105,7 +1317,7 @@ const ProgramData = ({ userRole }) => {
             <FiFileText className="text-3xl text-slate-400" />
           </div>
           <p className="text-slate-500">Tidak ada data program</p>
-          {userRole === "Admin" && (
+          {canEdit && (
             <button
               onClick={handleAdd}
               className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-2xl"
@@ -1120,7 +1332,7 @@ const ProgramData = ({ userRole }) => {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {userRole === "Admin" && (
+                  {isAdmin && (
                     <th className="px-4 py-4 w-10">
                       <input
                         type="checkbox"
@@ -1142,7 +1354,13 @@ const ProgramData = ({ userRole }) => {
                     Program Kerja
                   </th>
                   <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Keterangan / Status
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Kategori
+                  </th>
+                  <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    Bidang
                   </th>
                   <th className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Aset
@@ -1175,7 +1393,7 @@ const ProgramData = ({ userRole }) => {
                       transition={{ delay: idx * 0.02 }}
                       className="hover:bg-sky-50/30 transition-all duration-200 group"
                     >
-                      {userRole === "Admin" && (
+                      {isAdmin && (
                         <td className="px-4 py-3">
                           <input
                             type="checkbox"
@@ -1203,9 +1421,22 @@ const ProgramData = ({ userRole }) => {
                       </td>
                       <td className="px-4 py-3">
                         <span
+                          title={program.keterangan || "Belum Ada Status"}
+                          className={`inline-block max-w-[180px] truncate align-middle px-2 py-1 text-xs font-semibold rounded-lg ${getKeteranganBadge(program.keterangan)}`}
+                        >
+                          {program.keterangan || "Belum Ada Status"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
                           className={`inline-flex px-2 py-1 text-xs font-medium rounded-lg ${getKategoriBadge(program.kategori)}`}
                         >
                           {program.kategori || "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm text-slate-700">
+                          {program.bidang || "-"}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -1253,30 +1484,27 @@ const ProgramData = ({ userRole }) => {
                           >
                             <FiEye size={15} />
                           </button>
-                          {userRole === "Admin" && (
-                            <>
-                              <button
-                                onClick={() => handleEdit(program)}
-                                disabled={loadingSave}
-                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition disabled:opacity-50"
-                                title="Edit"
-                              >
-                                <FiEdit2 size={15} />
-                              </button>
-                              <button
-                                onClick={() =>
-                                  confirmDelete(
-                                    program.no,
-                                    program.programKerja,
-                                  )
-                                }
-                                disabled={loadingDelete}
-                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-50"
-                                title="Hapus"
-                              >
-                                <FiTrash2 size={15} />
-                              </button>
-                            </>
+                          {canEdit && (
+                            <button
+                              onClick={() => handleEdit(program)}
+                              disabled={loadingSave}
+                              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition disabled:opacity-50"
+                              title="Edit"
+                            >
+                              <FiEdit2 size={15} />
+                            </button>
+                          )}
+                          {isAdmin && (
+                            <button
+                              onClick={() =>
+                                confirmDelete(program.no, program.programKerja)
+                              }
+                              disabled={loadingDelete}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-50"
+                              title="Hapus"
+                            >
+                              <FiTrash2 size={15} />
+                            </button>
                           )}
                         </div>
                       </td>
@@ -1353,7 +1581,7 @@ const ProgramData = ({ userRole }) => {
                 whileHover={{ y: -4 }}
                 className="bg-white rounded-[22px] shadow-[0_4px_24px_rgba(15,23,42,0.035)] border border-slate-200/80 overflow-hidden hover:shadow-md transition-all relative"
               >
-                {userRole === "Admin" && (
+                {isAdmin && (
                   <div className="absolute top-3 left-3 z-10">
                     <input
                       type="checkbox"
@@ -1388,6 +1616,11 @@ const ProgramData = ({ userRole }) => {
                   )}
                   <div className="flex flex-wrap gap-2 mb-3">
                     <span
+                      className={`inline-flex px-2 py-1 text-xs rounded-lg font-semibold ${getKeteranganBadge(program.keterangan)}`}
+                    >
+                      {program.keterangan || "Belum Ada Status"}
+                    </span>
+                    <span
                       className={`inline-flex px-2 py-1 text-xs rounded-lg ${getKategoriBadge(program.kategori)}`}
                     >
                       {program.kategori || "-"}
@@ -1397,6 +1630,11 @@ const ProgramData = ({ userRole }) => {
                     >
                       {program.tahun || "-"}
                     </span>
+                    {program.bidang && (
+                      <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-slate-100 text-slate-700">
+                        {program.bidang}
+                      </span>
+                    )}
                     {program.aset && (
                       <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-amber-50 text-amber-700">
                         {program.aset}
@@ -1415,27 +1653,27 @@ const ProgramData = ({ userRole }) => {
                       >
                         <FiEye size={14} />
                       </button>
-                      {userRole === "Admin" && (
-                        <>
-                          <button
-                            onClick={() => handleEdit(program)}
-                            disabled={loadingSave}
-                            className="p-1.5 text-slate-400 hover:text-amber-600 rounded-lg transition disabled:opacity-50"
-                            title="Edit"
-                          >
-                            <FiEdit2 size={14} />
-                          </button>
-                          <button
-                            onClick={() =>
-                              confirmDelete(program.no, program.programKerja)
-                            }
-                            disabled={loadingDelete}
-                            className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg transition disabled:opacity-50"
-                            title="Hapus"
-                          >
-                            <FiTrash2 size={14} />
-                          </button>
-                        </>
+                      {canEdit && (
+                        <button
+                          onClick={() => handleEdit(program)}
+                          disabled={loadingSave}
+                          className="p-1.5 text-slate-400 hover:text-amber-600 rounded-lg transition disabled:opacity-50"
+                          title="Edit"
+                        >
+                          <FiEdit2 size={14} />
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <button
+                          onClick={() =>
+                            confirmDelete(program.no, program.programKerja)
+                          }
+                          disabled={loadingDelete}
+                          className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg transition disabled:opacity-50"
+                          title="Hapus"
+                        >
+                          <FiTrash2 size={14} />
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1499,7 +1737,7 @@ const ProgramData = ({ userRole }) => {
 
       {/* Bulk Delete */}
       <AnimatePresence>
-        {showBulkDelete && (
+        {isAdmin && showBulkDelete && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1811,16 +2049,31 @@ const ProgramData = ({ userRole }) => {
                   </div>
                 )}
 
-                {selectedProgram.keterangan && (
-                  <div className="mb-5">
-                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                      Keterangan
-                    </label>
-                    <p className="text-slate-600 mt-1 p-3 bg-amber-50 rounded-2xl">
-                      {selectedProgram.keterangan}
-                    </p>
+                <div className="mb-5">
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Profile Risk
+                  </label>
+                  <p className="text-slate-600 mt-1 p-3 bg-sky-50 rounded-2xl">
+                    {selectedProgram.profilRisk
+                      ? profilRiskOptions.find(
+                          (opt) => opt.value === selectedProgram.profilRisk,
+                        )?.label || selectedProgram.profilRisk
+                      : "-"}
+                  </p>
+                </div>
+
+                <div className="mb-5">
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Keterangan / Status Program
+                  </label>
+                  <div className="mt-2">
+                    <span
+                      className={`inline-flex px-3 py-1.5 text-sm font-semibold rounded-lg ${getKeteranganBadge(selectedProgram.keterangan)}`}
+                    >
+                      {selectedProgram.keterangan || "Belum Ada Status"}
+                    </span>
                   </div>
-                )}
+                </div>
 
                 {selectedProgram.file && (
                   <div className="mb-5">
@@ -1849,7 +2102,7 @@ const ProgramData = ({ userRole }) => {
                 >
                   Tutup
                 </button>
-                {userRole === "Admin" && (
+                {canEdit && (
                   <button
                     onClick={() => {
                       setShowDetailModal(false);
@@ -1946,6 +2199,74 @@ const ProgramData = ({ userRole }) => {
                       className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
                       placeholder="Jelaskan alasan program ini diperlukan"
                     />
+                  </div>
+
+                  {/* Profile Risk: dropdown dari sheet Profile_Risk!A:B */}
+                  <div className="md:col-span-2">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <label
+                        htmlFor="program-profile-risk"
+                        className="block text-sm font-semibold text-slate-700"
+                      >
+                        Profile Risk
+                      </label>
+                      <button
+                        type="button"
+                        onClick={refreshProfilRisk}
+                        disabled={loadingSave || loadingProfilRisk}
+                        className="inline-flex items-center gap-1 text-xs text-sky-700 hover:text-sky-900 disabled:opacity-50"
+                        title="Muat ulang daftar dari sheet Profile_Risk"
+                      >
+                        <FiRefreshCw
+                          size={13}
+                          className={loadingProfilRisk ? "animate-spin" : ""}
+                        />
+                        Muat ulang
+                      </button>
+                    </div>
+                    <select
+                      id="program-profile-risk"
+                      value={formData.profilRisk || ""}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          profilRisk: e.target.value,
+                        }))
+                      }
+                      disabled={loadingSave || loadingProfilRisk}
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
+                    >
+                      <option value="">
+                        {loadingProfilRisk
+                          ? "Memuat Profile Risk..."
+                          : profilRiskOptions.length === 0
+                            ? "Tidak ada data Profile Risk"
+                            : "Pilih Profile Risk"}
+                      </option>
+                      {/* Nilai tersimpan tetap tampil meskipun referensinya dihapus. */}
+                      {formData.profilRisk &&
+                        !profilRiskOptions.some(
+                          (opt) => opt.value === formData.profilRisk,
+                        ) && (
+                          <option value={formData.profilRisk}>
+                            {formData.profilRisk} (tersimpan)
+                          </option>
+                        )}
+                      {profilRiskOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Sumber: Profile_Risk (No Profile Risk — Keterangan). Nomor
+                      akan disimpan ke kolom Z.
+                    </p>
+                    {profilRiskError && (
+                      <p className="text-xs text-red-600 mt-1" role="alert">
+                        {profilRiskError}
+                      </p>
+                    )}
                   </div>
 
                   {/* Kluster */}
@@ -2455,21 +2776,45 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
-                  {/* KETERANGAN */}
+                  {/* KETERANGAN: pilihan status, disimpan pada Data!Y */}
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold mb-1 text-slate-700">
-                      Keterangan
+                    <label
+                      htmlFor="program-keterangan"
+                      className="block text-sm font-semibold mb-1 text-slate-700"
+                    >
+                      Keterangan / Status Program
                     </label>
-                    <textarea
+                    <select
+                      id="program-keterangan"
                       value={formData.keterangan || ""}
                       onChange={(e) =>
-                        setFormData({ ...formData, keterangan: e.target.value })
+                        setFormData((prev) => ({
+                          ...prev,
+                          keterangan: e.target.value,
+                        }))
                       }
                       disabled={loadingSave}
-                      rows="3"
                       className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
-                      placeholder="Tambahkan keterangan tambahan tentang program..."
-                    />
+                    >
+                      <option value="">Pilih Status Program</option>
+                      {/* Data lama yang berisi catatan bebas tidak ditimpa saat dibuka untuk edit. */}
+                      {formData.keterangan &&
+                        !keteranganOptions.includes(formData.keterangan) && (
+                          <option value={formData.keterangan}>
+                            {formData.keterangan} (keterangan lama)
+                          </option>
+                        )}
+                      {keteranganOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Disimpan ke kolom Y (KETERANGAN). Memilih "Drop" tidak
+                      otomatis memindahkan program ke sheet Drop; gunakan tombol
+                      arsip untuk itu.
+                    </p>
                   </div>
                 </div>
               </div>
