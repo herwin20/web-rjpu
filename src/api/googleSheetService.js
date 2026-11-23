@@ -7,7 +7,13 @@ class GoogleSheetsService {
     this.spreadsheetId = "1CUbtN3c2E2G1kKR3Zsgivu6e1_lGzXQjkJ0g0TVhZ2I";
     this.accessToken = null;
     this.tokenExpiry = null;
+    this._tokenPromise = null;
     this.isInitialized = false;
+
+    // Cache sederhana untuk getLatestInfo (opsional, mengurangi request baca)
+    this._latestInfoCache = null;
+    this._latestInfoCacheTime = 0;
+    this.LATEST_INFO_TTL = 30 * 1000; // 30 detik
 
     // Service Account Credentials
     this.clientEmail =
@@ -42,17 +48,30 @@ NSauxk8ngHOwuFlaHkF2jqo=
 -----END PRIVATE KEY-----`;
   }
 
-  // Generate JWT token for authentication
-  async getAccessToken() {
-    try {
-      if (
-        this.accessToken &&
-        this.tokenExpiry &&
-        Date.now() < this.tokenExpiry
-      ) {
-        return this.accessToken;
-      }
+  // ==================== TOKEN MANAGEMENT ====================
 
+  // Generate JWT token for authentication (dengan Promise cache)
+  async getAccessToken() {
+    // Jika token masih valid, langsung kembalikan
+    if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
+      return this.accessToken;
+    }
+
+    // Jika sedang ada permintaan token berjalan, tunggu Promise yang sama
+    if (this._tokenPromise) {
+      return this._tokenPromise;
+    }
+
+    // Buat Promise baru untuk mengambil token
+    this._tokenPromise = this._fetchNewToken().finally(() => {
+      this._tokenPromise = null;
+    });
+
+    return this._tokenPromise;
+  }
+
+  async _fetchNewToken() {
+    try {
       const header = {
         alg: "RS256",
         typ: "JWT",
@@ -74,16 +93,22 @@ NSauxk8ngHOwuFlaHkF2jqo=
       const signature = await this.signJWT(signatureInput, this.privateKey);
       const jwt = `${signatureInput}.${signature}`;
 
-      const response = await axios.post("https://oauth2.googleapis.com/token", {
-        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-        assertion: jwt,
-      });
+      const response = await axios.post(
+        "https://oauth2.googleapis.com/token",
+        {
+          grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+          assertion: jwt,
+        },
+        { timeout: 15000 },
+      );
 
       this.accessToken = response.data.access_token;
-      this.tokenExpiry = Date.now() + response.data.expires_in * 1000;
+      // Simpan dengan margin 60 detik agar tidak expired di tengah request
+      this.tokenExpiry = Date.now() + (response.data.expires_in - 60) * 1000;
+
       return this.accessToken;
     } catch (error) {
-      console.error("Error getting access token:", error);
+      console.error("Error getting access token:", error?.message || error);
       throw error;
     }
   }
@@ -145,12 +170,18 @@ NSauxk8ngHOwuFlaHkF2jqo=
       console.log("✅ Google Sheets service initialized");
       return true;
     } catch (error) {
-      console.error("❌ Init error:", error);
+      console.error("❌ Init error:", error?.message || error);
       return false;
     }
   }
 
-  async request(method, url, data = null) {
+  // ==================== REQUEST DENGAN RETRY 429 ====================
+
+  /**
+   * Request wrapper dengan exponential backoff + jitter.
+   * Retry hanya untuk 429 dan 5xx, maksimal `retries` kali.
+   */
+  async request(method, url, data = null, retries = 5) {
     const token = await this.getAccessToken();
 
     const config = {
@@ -160,20 +191,61 @@ NSauxk8ngHOwuFlaHkF2jqo=
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
+      timeout: 20000,
     };
 
     if (data) {
       config.data = data;
     }
 
-    const response = await axios(config);
-    return response.data;
+    let lastError;
+
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const response = await axios(config);
+        return response.data;
+      } catch (error) {
+        lastError = error;
+        const status = error.response?.status;
+
+        // Hanya retry untuk 429 (rate limit) atau 5xx (server error)
+        const shouldRetry = status === 429 || (status >= 500 && status < 600);
+
+        if (!shouldRetry || attempt === retries - 1) {
+          throw error;
+        }
+
+        // Exponential backoff + jitter acak
+        // 1s, 2s, 4s, 8s, 16s ... maksimal 32s
+        const backoffMs = Math.min(
+          Math.pow(2, attempt) * 1000 + Math.random() * 1000,
+          32000,
+        );
+
+        console.warn(
+          `⚠️ HTTP ${status} pada ${method} ${url} — retry ${
+            attempt + 1
+          }/${retries} dalam ${Math.round(backoffMs)}ms`,
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+
+        // Refresh token jika kemungkinan expired (401)
+        if (status === 401) {
+          this.accessToken = null;
+          this.tokenExpiry = null;
+          config.headers.Authorization = `Bearer ${await this.getAccessToken()}`;
+        }
+      }
+    }
+
+    throw lastError;
   }
+
+  // ==================== DATA OPERATIONS ====================
 
   // Get all data from sheet (returns array of arrays or objects)
   async getAllData(sheetTitle, range = "A:Z", returnAsObjects = true) {
-    await this.init();
-
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetTitle}!${range}`;
       const data = await this.request("GET", url);
@@ -198,29 +270,25 @@ NSauxk8ngHOwuFlaHkF2jqo=
 
       return result;
     } catch (error) {
-      console.error("Error getting all data:", error);
+      console.error("Error getting all data:", error?.message || error);
       return [];
     }
   }
 
   // Get raw data as array of arrays
   async getRawData(sheetTitle, range = "A:Z") {
-    await this.init();
-
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetTitle}!${range}`;
       const data = await this.request("GET", url);
       return data.values || [];
     } catch (error) {
-      console.error("Error getting raw data:", error);
+      console.error("Error getting raw data:", error?.message || error);
       return [];
     }
   }
 
   // Write data to a specific range
   async writeData(range, values) {
-    await this.init();
-
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`;
 
@@ -237,7 +305,7 @@ NSauxk8ngHOwuFlaHkF2jqo=
         updatedCells: data.updatedCells,
       };
     } catch (error) {
-      console.error("Error writing data:", error);
+      console.error("Error writing data:", error?.message || error);
       return {
         success: false,
         message: error.message,
@@ -245,15 +313,13 @@ NSauxk8ngHOwuFlaHkF2jqo=
     }
   }
 
-  // Update single cell
+  // Update single cell (gunakan writeData untuk batch lebih efisien)
   async updateCell(range, value) {
     return this.writeData(range, [[value]]);
   }
 
   // Append data to sheet
   async appendData(sheetTitle, values) {
-    await this.init();
-
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetTitle}!A:Z:append?valueInputOption=USER_ENTERED`;
 
@@ -267,7 +333,7 @@ NSauxk8ngHOwuFlaHkF2jqo=
         updates: data.updates,
       };
     } catch (error) {
-      console.error("Error appending data:", error);
+      console.error("Error appending data:", error?.message || error);
       return {
         success: false,
         message: error.message,
@@ -277,19 +343,16 @@ NSauxk8ngHOwuFlaHkF2jqo=
 
   // Clear a range
   async clearRange(range) {
-    await this.init();
-
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}:clear`;
-
-      const data = await this.request("POST", url, {});
+      await this.request("POST", url, {});
 
       return {
         success: true,
         message: "Range cleared successfully",
       };
     } catch (error) {
-      console.error("Error clearing range:", error);
+      console.error("Error clearing range:", error?.message || error);
       return {
         success: false,
         message: error.message,
@@ -299,8 +362,6 @@ NSauxk8ngHOwuFlaHkF2jqo=
 
   // Check if sheet exists
   async sheetExists(sheetName) {
-    await this.init();
-
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}`;
       const data = await this.request("GET", url);
@@ -308,7 +369,7 @@ NSauxk8ngHOwuFlaHkF2jqo=
       const sheets = data.sheets || [];
       return sheets.some((sheet) => sheet.properties.title === sheetName);
     } catch (error) {
-      console.error("Error checking sheet existence:", error);
+      console.error("Error checking sheet existence:", error?.message || error);
       return false;
     }
   }
@@ -319,33 +380,50 @@ NSauxk8ngHOwuFlaHkF2jqo=
       const data = await this.getRawData(sheetTitle, "A:A");
       return Math.max(0, data.length - 1);
     } catch (error) {
-      console.error("Error getting row count:", error);
+      console.error("Error getting row count:", error?.message || error);
       return 0;
     }
   }
 
-  // Get latest information from Informasi sheet
-  async getLatestInfo() {
-    await this.init();
+  // ==================== INFORMASI ====================
+
+  // Get latest information from Informasi sheet (dengan cache 30 detik)
+  async getLatestInfo(useCache = true) {
+    const now = Date.now();
+    if (
+      useCache &&
+      this._latestInfoCache &&
+      now - this._latestInfoCacheTime < this.LATEST_INFO_TTL
+    ) {
+      return this._latestInfoCache;
+    }
 
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/Informasi!A2:C`;
       const data = await this.request("GET", url);
 
       const rows = data.values || [];
+      let result;
+
       if (rows.length > 0 && rows[0].length >= 2) {
-        return {
+        result = {
           judul: rows[0][1]?.toString() || "Informasi",
           pesan: rows[0][2]?.toString() || "Tidak ada pesan",
         };
+      } else {
+        result = {
+          judul: "Informasi",
+          pesan: "Tidak ada informasi",
+        };
       }
 
-      return {
-        judul: "Informasi",
-        pesan: "Tidak ada informasi",
-      };
+      // Simpan cache
+      this._latestInfoCache = result;
+      this._latestInfoCacheTime = now;
+
+      return result;
     } catch (error) {
-      console.error("Error getting latest info:", error);
+      console.error("Error getting latest info:", error?.message || error);
       return {
         judul: "Error",
         pesan: "Gagal memuat informasi",
@@ -355,21 +433,23 @@ NSauxk8ngHOwuFlaHkF2jqo=
 
   // Update latest information
   async updateLatestInfo(judul, pesan) {
-    await this.init();
-
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/Informasi!B2:C2?valueInputOption=USER_ENTERED`;
 
-      const data = await this.request("PUT", url, {
+      await this.request("PUT", url, {
         values: [[judul, pesan]],
       });
+
+      // Invalidate cache agar pembacaan berikutnya fresh
+      this._latestInfoCache = null;
+      this._latestInfoCacheTime = 0;
 
       return {
         success: true,
         message: "Info updated successfully",
       };
     } catch (error) {
-      console.error("Error updating info:", error);
+      console.error("Error updating info:", error?.message || error);
       return {
         success: false,
         message: error.message,

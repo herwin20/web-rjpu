@@ -8,21 +8,15 @@ import {
   FiTrendingUp,
   FiTarget,
   FiBarChart2,
-  FiActivity,
   FiAward,
-  FiClock,
-  FiChevronRight,
   FiUsers,
   FiBriefcase,
-  FiLayers,
-  FiRefreshCw,
   FiInfo,
 } from "react-icons/fi";
 import { motion, AnimatePresence } from "framer-motion";
 
 const DashboardHome = ({ stats, loading, user }) => {
   const [selectedYear, setSelectedYear] = useState("all");
-  const [showAllPrograms, setShowAllPrograms] = useState(false);
 
   // Format currency dengan truncate untuk tampilan card
   const formatCurrency = (amount, truncate = false) => {
@@ -38,30 +32,16 @@ const DashboardHome = ({ stats, loading, user }) => {
     const fullAmount = formatter.format(amount);
 
     if (truncate) {
-      // Truncate untuk tampilan card
-      if (amount >= 1_000_000_000_000) {
+      if (amount >= 1_000_000_000_000)
         return `Rp ${(amount / 1_000_000_000_000).toFixed(1)}T`;
-      }
-      if (amount >= 1_000_000_000) {
+      if (amount >= 1_000_000_000)
         return `Rp ${(amount / 1_000_000_000).toFixed(1)}M`;
-      }
-      if (amount >= 1_000_000) {
-        return `Rp ${(amount / 1_000_000).toFixed(1)}JT`;
-      }
-      if (amount >= 1_000) {
-        return `Rp ${(amount / 1_000).toFixed(1)}RB`;
-      }
+      if (amount >= 1_000_000) return `Rp ${(amount / 1_000_000).toFixed(1)}JT`;
+      if (amount >= 1_000) return `Rp ${(amount / 1_000).toFixed(1)}RB`;
       return fullAmount;
     }
 
     return fullAmount;
-  };
-
-  const formatNumber = (num) => {
-    if (!num) return "0";
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
-    if (num >= 1000) return (num / 1000).toFixed(1) + "K";
-    return num.toString();
   };
 
   // Filter stats berdasarkan tahun yang dipilih
@@ -69,7 +49,6 @@ const DashboardHome = ({ stats, loading, user }) => {
     if (selectedYear === "all" || !stats.programsByYear[selectedYear]) {
       return stats;
     }
-
     const yearData = stats.programsByYear[selectedYear];
     return {
       ...stats,
@@ -101,30 +80,10 @@ const DashboardHome = ({ stats, loading, user }) => {
     );
   }, [filteredStats.programsByYear]);
 
-  // Get recent programs with proper budget
-  const recentPrograms = useMemo(() => {
-    const programs = [];
-    Object.entries(stats.programsByYear).forEach(([year, data]) => {
-      if (data.programList && Array.isArray(data.programList)) {
-        data.programList.forEach((program) => {
-          if (program) {
-            programs.push({
-              year,
-              program: program.nama || program.programKerja || program,
-              anggaran: program.anggaran || program.estimasiAnggaran || 0,
-            });
-          }
-        });
-      }
-    });
-    return programs.slice(0, showAllPrograms ? 10 : 5);
-  }, [stats.programsByYear, showAllPrograms]);
-
   // Skeleton Loading Component
   const SkeletonLoader = () => (
     <div className="min-h-0 bg-transparent p-0">
       <div className="mx-auto max-w-[1600px] space-y-6 lg:space-y-7">
-        {/* Welcome Section Skeleton */}
         <div className="bg-gradient-to-br from-[#101b34] via-[#172c50] to-[#234b7d] rounded-[26px] p-6 md:p-8 animate-pulse">
           <div className="flex flex-col md:flex-row justify-between gap-4">
             <div className="space-y-3">
@@ -142,8 +101,6 @@ const DashboardHome = ({ stats, loading, user }) => {
             </div>
           </div>
         </div>
-
-        {/* Stat Cards Skeleton */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {[1, 2, 3, 4].map((i) => (
             <div
@@ -183,7 +140,6 @@ const DashboardHome = ({ stats, loading, user }) => {
     </motion.div>
   );
 
-  // Tooltip Component
   const Tooltip = ({ children, content }) => (
     <div className="relative inline-flex items-center group cursor-help ml-1">
       <FiInfo className="text-slate-400 text-xs" />
@@ -193,9 +149,7 @@ const DashboardHome = ({ stats, loading, user }) => {
     </div>
   );
 
-  if (loading) {
-    return <SkeletonLoader />;
-  }
+  if (loading) return <SkeletonLoader />;
 
   return (
     <div className="min-h-0 bg-transparent p-0">
@@ -234,7 +188,6 @@ const DashboardHome = ({ stats, loading, user }) => {
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(e.target.value)}
                   className="bg-white/20 backdrop-blur-sm rounded-lg px-3 py-2 text-sm text-white border border-white/30 cursor-pointer hover:bg-white/30 transition-colors"
-                  aria-label="Filter tahun program"
                 >
                   <option value="all" className="text-gray-900">
                     Semua Tahun
@@ -300,13 +253,11 @@ const DashboardHome = ({ stats, loading, user }) => {
           </div>
         </motion.div>
 
-        {/* Empty State */}
         {filteredStats.totalPrograms === 0 && <EmptyState />}
 
-        {/* Main Content - Only show if data exists */}
         {filteredStats.totalPrograms > 0 && (
           <>
-            {/* Stat Cards - Enhanced with better text handling */}
+            {/* Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               {[
                 {
@@ -446,7 +397,7 @@ const DashboardHome = ({ stats, loading, user }) => {
               </div>
             </motion.div>
 
-            {/* Program distribution — presentation only */}
+            {/* Distribusi Program */}
             <div className="flex flex-wrap items-end justify-between gap-2 pt-2">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-600">
@@ -470,57 +421,54 @@ const DashboardHome = ({ stats, loading, user }) => {
                 <div className="bg-slate-50 px-6 py-4 border-b">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <h3 className="text-base font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                      <FiBarChart2 className="text-sky-600" />
-                      Program per Tahun
+                      <FiBarChart2 className="text-sky-600" /> Program per Tahun
                     </h3>
                     <span className="text-xs px-2 py-1 bg-sky-100 text-sky-600 rounded-full whitespace-nowrap">
                       Total: {filteredStats.totalPrograms} program
                     </span>
                   </div>
                 </div>
-                <div className="p-6 space-y-4">
+                <div className="p-6 space-y-5">
                   {Object.entries(filteredStats.programsByYear)
                     .sort((a, b) => b[0] - a[0])
-                    .map(([year, data], idx) => (
-                      <motion.div
-                        key={year}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: idx * 0.05 }}
-                      >
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="font-semibold text-slate-700 flex items-center gap-2">
-                            <span className="w-2 h-2 bg-sky-600 rounded-full"></span>
-                            Tahun {year}
-                          </span>
-                          <span className="text-slate-500 font-medium">
-                            {data.totalProgram} program
-                          </span>
-                        </div>
-                        <div className="relative">
-                          <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                    .map(([year, data], idx) => {
+                      const percentage = Math.round(
+                        (data.totalProgram / filteredStats.totalPrograms) * 100,
+                      );
+                      return (
+                        <motion.div
+                          key={year}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.05 }}
+                        >
+                          <div className="flex justify-between items-center text-sm mb-1.5">
+                            <span className="font-semibold text-slate-700 flex items-center gap-2">
+                              <span className="w-2 h-2 bg-sky-600 rounded-full"></span>
+                              Tahun {year}
+                            </span>
+                            <div className="flex items-center gap-2 text-slate-500">
+                              <span className="font-medium">
+                                {data.totalProgram} program
+                              </span>
+                              <span className="text-xs font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md">
+                                {percentage}%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                             <motion.div
                               initial={{ width: 0 }}
-                              animate={{
-                                width: `${(data.totalProgram / filteredStats.totalPrograms) * 100}%`,
-                              }}
+                              animate={{ width: `${percentage}%` }}
                               transition={{ duration: 0.8, delay: idx * 0.1 }}
-                              className="bg-gradient-to-r from-sky-500 to-blue-600 h-3 rounded-full relative"
+                              className="bg-gradient-to-r from-sky-500 to-blue-600 h-2.5 rounded-full relative"
                             >
                               <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
                             </motion.div>
                           </div>
-                          <span className="absolute right-0 -top-5 text-xs text-slate-400">
-                            {Math.round(
-                              (data.totalProgram /
-                                filteredStats.totalPrograms) *
-                                100,
-                            )}
-                            %
-                          </span>
-                        </div>
-                      </motion.div>
-                    ))}
+                        </motion.div>
+                      );
+                    })}
                 </div>
               </motion.div>
 
@@ -534,8 +482,8 @@ const DashboardHome = ({ stats, loading, user }) => {
                 <div className="bg-slate-50 px-6 py-4 border-b">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <h3 className="text-base font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                      <FiTarget className="text-indigo-600" />
-                      Program per Kluster
+                      <FiTarget className="text-indigo-600" /> Program per
+                      Kluster
                     </h3>
                     <span className="text-xs px-2 py-1 bg-indigo-100 text-indigo-600 rounded-full whitespace-nowrap">
                       {Object.keys(filteredStats.programsByCluster).length}{" "}
@@ -543,55 +491,53 @@ const DashboardHome = ({ stats, loading, user }) => {
                     </span>
                   </div>
                 </div>
-                <div className="p-6 space-y-3 max-h-[400px] overflow-y-auto">
+                <div className="p-6 space-y-4 max-h-[400px] overflow-y-auto">
                   {Object.entries(filteredStats.programsByCluster)
                     .sort((a, b) => b[1].totalProgram - a[1].totalProgram)
-                    .map(([cluster, data], idx) => (
-                      <motion.div
-                        key={cluster}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: idx * 0.05 }}
-                        className="group"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span
-                            className="font-medium text-slate-700 truncate flex-1 mr-2"
-                            title={cluster}
-                          >
-                            {cluster}
-                          </span>
-                          <span className="text-sm font-semibold text-indigo-600 shrink-0">
-                            {data.totalProgram}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                    .map(([cluster, data], idx) => {
+                      const percentage = Math.round(
+                        (data.totalProgram / filteredStats.totalPrograms) * 100,
+                      );
+                      return (
+                        <motion.div
+                          key={cluster}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.05 }}
+                          className="group"
+                        >
+                          <div className="flex items-center justify-between mb-1.5 gap-3">
+                            <span
+                              className="font-medium text-sm text-slate-700 truncate flex-1"
+                              title={cluster}
+                            >
+                              {cluster}
+                            </span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-sm font-semibold text-indigo-600">
+                                {data.totalProgram}
+                              </span>
+                              <span className="text-xs text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                {percentage}%
+                              </span>
+                            </div>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                             <motion.div
                               initial={{ width: 0 }}
-                              animate={{
-                                width: `${(data.totalProgram / filteredStats.totalPrograms) * 100}%`,
-                              }}
+                              animate={{ width: `${percentage}%` }}
                               transition={{ duration: 0.6, delay: idx * 0.1 }}
                               className="bg-gradient-to-r from-indigo-400 to-indigo-600 h-2 rounded-full"
                             ></motion.div>
                           </div>
-                          <span className="text-xs text-slate-400 w-12 text-right shrink-0">
-                            {Math.round(
-                              (data.totalProgram /
-                                filteredStats.totalPrograms) *
-                                100,
-                            )}
-                            %
-                          </span>
-                        </div>
-                      </motion.div>
-                    ))}
+                        </motion.div>
+                      );
+                    })}
                 </div>
               </motion.div>
             </div>
 
-            {/* Financial insights — presentation only */}
+            {/* Financial insights */}
             <div className="flex flex-wrap items-end justify-between gap-2 pt-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-600">
@@ -615,8 +561,8 @@ const DashboardHome = ({ stats, loading, user }) => {
                 <div className="bg-slate-50 px-6 py-4 border-b">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <h3 className="text-base font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                      <FiTrendingUp className="text-emerald-600" />
-                      Anggaran per Tahun
+                      <FiTrendingUp className="text-emerald-600" /> Anggaran per
+                      Tahun
                     </h3>
                   </div>
                 </div>
@@ -667,8 +613,8 @@ const DashboardHome = ({ stats, loading, user }) => {
                 <div className="bg-slate-50 px-6 py-4 border-b">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <h3 className="text-base font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                      <FiPieChart className="text-amber-600" />
-                      Anggaran per Sumber
+                      <FiPieChart className="text-amber-600" /> Anggaran per
+                      Sumber
                     </h3>
                   </div>
                 </div>
@@ -712,102 +658,6 @@ const DashboardHome = ({ stats, loading, user }) => {
                 </div>
               </motion.div>
             </div>
-
-            {/* Recent Programs Preview */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="bg-white border border-slate-200/80 rounded-[22px] shadow-[0_3px_18px_rgba(16,27,52,.035)] hover:shadow-[0_12px_30px_rgba(16,27,52,.08)] transition-all overflow-hidden"
-            >
-              <div className="bg-slate-50 px-6 py-4 border-b flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <h3 className="text-base font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                  <FiClock className="text-sky-600" />
-                  Program Terbaru
-                </h3>
-                <button
-                  onClick={() => setShowAllPrograms(!showAllPrograms)}
-                  className="flex items-center gap-1 text-sm text-sky-600 hover:text-sky-700 transition-colors"
-                  aria-expanded={showAllPrograms}
-                  aria-label={
-                    showAllPrograms
-                      ? "Sembunyikan program"
-                      : "Lihat semua program"
-                  }
-                >
-                  {showAllPrograms
-                    ? "Tampilkan lebih sedikit"
-                    : "Lihat semua program"}
-                  <FiChevronRight
-                    className={`text-sm transition-transform ${showAllPrograms ? "rotate-90" : ""}`}
-                  />
-                </button>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        No
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Program Kerja
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Tahun
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Estimasi Anggaran
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    <AnimatePresence>
-                      {recentPrograms.map((item, index) => (
-                        <motion.tr
-                          key={index}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ delay: index * 0.03 }}
-                          className="hover:bg-sky-50/30 transition-colors group"
-                        >
-                          <td className="px-6 py-3 text-sm text-slate-500">
-                            {index + 1}
-                          </td>
-                          <td className="px-6 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-1 h-8 bg-sky-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                              <span className="text-slate-900 font-medium line-clamp-2">
-                                {item.program}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-3">
-                            <span className="inline-flex px-2 py-1 text-xs rounded-full bg-sky-100 text-sky-700 font-medium whitespace-nowrap">
-                              {item.year}
-                            </span>
-                          </td>
-                          <td className="px-6 py-3 text-right">
-                            <span className="text-emerald-600 font-semibold whitespace-nowrap">
-                              {formatCurrency(item.anggaran, true)}
-                            </span>
-                          </td>
-                        </motion.tr>
-                      ))}
-                    </AnimatePresence>
-                  </tbody>
-                </table>
-              </div>
-              {recentPrograms.length === 0 && (
-                <div className="text-center py-12">
-                  <FiDatabase className="text-4xl text-slate-300 mx-auto mb-3" />
-                  <p className="text-slate-400">
-                    Belum ada program yang ditambahkan
-                  </p>
-                </div>
-              )}
-            </motion.div>
           </>
         )}
       </div>

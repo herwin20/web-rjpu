@@ -96,8 +96,8 @@ const DropData = ({ userRole }) => {
   const [loadingDelete, setLoadingDelete] = useState(false);
   const itemsPerPage = 10;
 
-  // KONSTANTA RANGE UNTUK SHEET DROP (28 KOLOM = A:AB)
-  const DROP_RANGE = "A:AB";
+  // KONSTANTA RANGE UNTUK SHEET DROP (Sekarang A:AD = 30 Kolom)
+  const DROP_RANGE = "A:AD";
 
   useEffect(() => {
     loadDropData();
@@ -128,15 +128,13 @@ const DropData = ({ userRole }) => {
 
       if (!dropExists) return [];
 
-      // Ambil data dengan range A:AB (28 kolom)
+      // Ambil data dengan range A:AD
       const data = await sheetsService.getAllData("Drop", DROP_RANGE);
 
       const processedData = [];
-      // Asumsi getAllData mengembalikan array of objects karena ada header
       for (let i = 0; i < data.length; i++) {
         const row = data[i];
 
-        // Skip baris kosong
         if (
           !row["PROGRAM KERJA"] ||
           row["PROGRAM KERJA"].toString().trim() === ""
@@ -163,7 +161,6 @@ const DropData = ({ userRole }) => {
           hargaTotal: row["HARGA TOTAL"] || "",
           file: row["FILE"] || "",
           bidang: row["BIDANG"] || "",
-          // KOLOM BARU
           kategori: row["KATEGORI"] || "",
           hargaMaterial: row["HARGA MATERIAL"] || "",
           hargaJasa: row["HARGA JASA"] || "",
@@ -172,8 +169,8 @@ const DropData = ({ userRole }) => {
           aset: row["ASET"] || "",
           descriptionAset: row["DESCRIPTION ASET"] || "",
           keterangan: row["KETERANGAN"] || "",
-
-          // METADATA
+          profilRisk: row["PROFIL RISK"] || "",
+          aktivitasAo: row["AKTIVITAS AO"] || "", // <-- TAMBAHAN
           dropDate: row["DROP DATE"] || "",
           dropStatus: row["DROP STATUS"] || "DROP",
           originalNo: row["ORIGINAL NO"] || row["NO"] || "",
@@ -192,44 +189,14 @@ const DropData = ({ userRole }) => {
 
     setLoadingRestore(true);
     try {
-      // PERBAIKAN: Sertakan kolom baru (kategori, harga, strategis, dll) agar tidak ditolak oleh addData
-      const restoredData = {
-        programKerja: itemToRestore.programKerja,
-        alasanProgram: itemToRestore.alasanProgram,
-        klusterProgram: itemToRestore.klusterProgram,
-        oemNonOem: itemToRestore.oemNonOem,
-        dasarInputProgram: itemToRestore.dasarInputProgram,
-        sasaranRjpp: itemToRestore.sasaranRjpp,
-        sumberAnggaran: itemToRestore.sumberAnggaran,
-        estLevering: itemToRestore.estLevering,
-        levelResikoInherent: itemToRestore.levelResikoInherent,
-        levelRisikoResidual: itemToRestore.levelRisikoResidual,
-        sat: itemToRestore.sat,
-        vol: itemToRestore.vol,
-        tahun: itemToRestore.tahun,
-        file: itemToRestore.file,
-        bidang: itemToRestore.bidang,
-        keterangan: itemToRestore.keterangan,
-
-        // KOLOM BARU (Wajib untuk validasi addData)
-        kategori: itemToRestore.kategori,
-        hargaMaterial: itemToRestore.hargaMaterial,
-        hargaJasa: itemToRestore.hargaJasa,
-        tkdn: itemToRestore.tkdn,
-        strategisRjpu: itemToRestore.strategisRjpu,
-        aset: itemToRestore.aset,
-        descriptionAset: itemToRestore.descriptionAset,
-      };
-
-      // Add back to Data sheet (akan otomatis generate ID baru & hitung harga total)
-      const result = await dataSheet.addData(restoredData);
+      const result = await dataSheet.restoreFromDrop(
+        itemToRestore.originalNo || itemToRestore.no,
+      );
 
       if (result.success) {
-        // Hapus dari Drop sheet
-        await removeFromDropSheet(itemToRestore.originalNo || itemToRestore.no);
         await loadDropData();
         showToast(
-          `Program "${itemToRestore.programKerja}" berhasil direstore dengan NO baru: ${result.no}`,
+          `Program "${itemToRestore.programKerja}" berhasil direstore.`,
           "success",
         );
       } else {
@@ -253,7 +220,6 @@ const DropData = ({ userRole }) => {
         const row = allDataRaw[i];
         if (!row) continue;
 
-        // PERBAIKAN: Cari di row[27] (ORIGINAL NO) atau row[0] (NO)
         const valOriginalNo = row[27] ? row[27].toString() : "";
         const valNo = row[0] ? row[0].toString() : "";
 
@@ -268,15 +234,15 @@ const DropData = ({ userRole }) => {
 
       if (rowIndex !== -1) {
         const sheetRow = rowIndex + 1;
-        // Kosongkan 28 kolom (A:AB)
-        const emptyRow = Array(28).fill("");
-        const range = `Drop!A${sheetRow}:AB${sheetRow}`;
+        const emptyRow = Array(30).fill(""); // 30 kolom A:AD
+        const range = `Drop!A${sheetRow}:AD${sheetRow}`;
         await sheetsService.writeData(range, [emptyRow]);
         console.log(`Removed row ${sheetRow} from Drop sheet`);
       } else {
         console.log(
           `Row with originalNo ${originalNo} not found in Drop sheet`,
         );
+        return false;
       }
 
       return true;
@@ -291,7 +257,14 @@ const DropData = ({ userRole }) => {
 
     setLoadingDelete(true);
     try {
-      await removeFromDropSheet(itemToDelete.originalNo || itemToDelete.no);
+      const removed = await removeFromDropSheet(
+        itemToDelete.originalNo || itemToDelete.no,
+      );
+      if (!removed) {
+        throw new Error(
+          "Program tidak ditemukan atau gagal dihapus dari Drop.",
+        );
+      }
       await loadDropData();
       showToast(
         `Program "${itemToDelete.programKerja}" berhasil dihapus permanen`,
@@ -344,26 +317,21 @@ const DropData = ({ userRole }) => {
     if (!dateString) return "-";
 
     try {
-      // 1. Jika sudah format Date bawaan JS
       if (dateString instanceof Date && !isNaN(dateString)) {
         return dateString.toLocaleString("id-ID");
       }
 
       const str = String(dateString).trim();
 
-      // 2. Coba parse format Indonesia: "DD/MM/YYYY, HH.mm.ss"
-      // Pisahkan berdasarkan koma
       const parts = str.split(",");
       if (parts.length >= 2) {
-        const datePart = parts[0].trim(); // "06/11/2026"
-        const timePart = parts[1].trim(); // "20.50.27"
+        const datePart = parts[0].trim();
+        const timePart = parts[1].trim();
 
         const [day, month, year] = datePart.split("/").map(Number);
         const [hours, minutes] = timePart.split(/[.:]/).map(Number);
 
-        // Validasi angka
         if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
-          // Buat Date object (month - 1 karena JS bulan mulai dari 0)
           const dateObj = new Date(
             year,
             month - 1,
@@ -384,7 +352,6 @@ const DropData = ({ userRole }) => {
         }
       }
 
-      // 3. Fallback: Jika tidak ada koma, coba parse date string biasa
       const fallbackDate = new Date(str);
       if (!isNaN(fallbackDate.getTime())) {
         return fallbackDate.toLocaleString("id-ID");
@@ -393,7 +360,6 @@ const DropData = ({ userRole }) => {
       console.error("Error parsing date:", error, dateString);
     }
 
-    // Jika semua gagal, kembalikan string asli (jangan tampilkan "-")
     return dateString;
   };
 
@@ -408,8 +374,8 @@ const DropData = ({ userRole }) => {
           (item.klusterProgram || "").toLowerCase().includes(term) ||
           (item.tahun || "").includes(term) ||
           (item.originalNo || "").toLowerCase().includes(term) ||
-          (item.kategori || "").toLowerCase().includes(term) || // Tambahan filter baru
-          (item.aset || "").toLowerCase().includes(term), // Tambahan filter baru
+          (item.kategori || "").toLowerCase().includes(term) ||
+          (item.aset || "").toLowerCase().includes(term),
       );
     }
 
@@ -540,7 +506,6 @@ const DropData = ({ userRole }) => {
 
   return (
     <div className="min-h-screen bg-transparent p-0 text-slate-800">
-      {/* Loading Overlays */}
       <AnimatePresence>
         {(loadingRestore || loadingDelete) && (
           <LoadingOverlay
@@ -555,7 +520,6 @@ const DropData = ({ userRole }) => {
         )}
       </AnimatePresence>
 
-      {/* Toast Notification */}
       <AnimatePresence>
         {toast.show && (
           <motion.div
@@ -578,7 +542,6 @@ const DropData = ({ userRole }) => {
         )}
       </AnimatePresence>
 
-      {/* Restore Confirmation Modal */}
       <AnimatePresence>
         {showRestoreConfirm && itemToRestore && (
           <motion.div
@@ -668,7 +631,6 @@ const DropData = ({ userRole }) => {
         )}
       </AnimatePresence>
 
-      {/* Permanent Delete Confirmation Modal */}
       <AnimatePresence>
         {showPermanentDeleteConfirm && itemToDelete && (
           <motion.div
@@ -758,7 +720,6 @@ const DropData = ({ userRole }) => {
         )}
       </AnimatePresence>
 
-      {/* Header Section */}
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5 mb-6 rounded-[26px] bg-[#101b34] px-5 py-6 md:px-7 md:py-7 shadow-[0_16px_38px_rgba(16,27,52,.13)]">
           <div>
@@ -782,7 +743,6 @@ const DropData = ({ userRole }) => {
           </button>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
           <motion.div
             whileHover={{ y: -4 }}
@@ -881,7 +841,6 @@ const DropData = ({ userRole }) => {
           </motion.div>
         </div>
 
-        {/* Filters Bar */}
         <div className="bg-white rounded-[22px] shadow-[0_3px_20px_rgba(15,23,42,0.035)] border border-slate-200/80 p-5">
           <div className="flex flex-col lg:flex-row gap-4">
             <div className="flex-1 relative">
@@ -932,7 +891,6 @@ const DropData = ({ userRole }) => {
         </div>
       </div>
 
-      {/* Main Content */}
       {filteredData.length === 0 ? (
         <div className="bg-white rounded-[22px] border border-slate-200/80 p-12 text-center shadow-sm">
           <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1078,7 +1036,6 @@ const DropData = ({ userRole }) => {
             </table>
           </div>
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t border-slate-100 bg-slate-50">
               <div className="text-sm text-slate-500">
@@ -1137,7 +1094,6 @@ const DropData = ({ userRole }) => {
         </div>
       )}
 
-      {/* Detail Modal */}
       <AnimatePresence>
         {showDetailModal && selectedItem && (
           <motion.div
@@ -1321,6 +1277,19 @@ const DropData = ({ userRole }) => {
                       {selectedItem.descriptionAset || "-"}
                     </p>
                   </div>
+
+                  {/* TAMBAHAN: Tampilan Aktivitas AO di Modal Detail */}
+                  {selectedItem.sumberAnggaran === "AO" &&
+                    selectedItem.aktivitasAo && (
+                      <div className="bg-indigo-50 rounded-xl p-3 md:col-span-2">
+                        <label className="text-xs font-semibold text-indigo-600 uppercase tracking-wider">
+                          Aktivitas AO
+                        </label>
+                        <p className="font-medium text-indigo-900 mt-1">
+                          {selectedItem.aktivitasAo}
+                        </p>
+                      </div>
+                    )}
                 </div>
 
                 {selectedItem.alasanProgram && (

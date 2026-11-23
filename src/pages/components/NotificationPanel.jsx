@@ -28,11 +28,47 @@ const NotificationPanel = ({
     return <FiInfo className="text-blue-500 animate-pulse" />;
   };
 
+  // Helper untuk memparsing tanggal format Indonesia (DD/MM/YYYY, HH.mm.ss)
+  const parseIndonesianDate = (dateString) => {
+    if (!dateString) return null;
+
+    try {
+      // Coba parsing standar terlebih dahulu
+      const standardDate = new Date(dateString);
+      if (!isNaN(standardDate.getTime())) return standardDate;
+
+      // Jika gagal, parsing manual format "DD/MM/YYYY, HH.mm.ss"
+      const parts = dateString.match(
+        /(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2})[.:](\d{2})[.:](\d{2})/,
+      );
+      if (parts) {
+        const [_, day, month, year, hour, minute, second] = parts;
+        return new Date(year, month - 1, day, hour, minute, second);
+      }
+
+      // Fallback jika formatnya hanya "DD/MM/YYYY"
+      const dateOnlyParts = dateString.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (dateOnlyParts) {
+        const [_, day, month, year] = dateOnlyParts;
+        return new Date(year, month - 1, day);
+      }
+
+      return null;
+    } catch (e) {
+      return null;
+    }
+  };
+
   const formatTimeAgo = (dateString) => {
     if (!dateString) return "";
 
+    const date = parseIndonesianDate(dateString);
+    if (!date || isNaN(date.getTime())) {
+      // Jika tetap gagal, tampilkan string aslinya agar tidak "Invalid Date"
+      return dateString;
+    }
+
     const now = new Date();
-    const date = new Date(dateString);
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
@@ -42,7 +78,12 @@ const NotificationPanel = ({
     if (diffMins < 60) return `${diffMins} menit lalu`;
     if (diffHours < 24) return `${diffHours} jam lalu`;
     if (diffDays < 7) return `${diffDays} hari lalu`;
-    return date.toLocaleDateString("id-ID");
+
+    return date.toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
   };
 
   const groupNotificationsByProgram = () => {
@@ -132,7 +173,7 @@ const NotificationPanel = ({
                     {group.notifications.some((n) => n.status === "UNREAD") && (
                       <button
                         onClick={() => onMarkAllAsRead(group.programNo)}
-                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 ml-2"
+                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 ml-2 whitespace-nowrap"
                       >
                         <FiCheck size={12} />
                         Tandai dibaca
@@ -185,7 +226,7 @@ const NotificationPanel = ({
                         </div>
                         {notif.status === "READ" && notif.dibacaOleh && (
                           <div className="mt-2 pt-2 border-t border-gray-100">
-                            <p className="text-xs text-gray-400 flex items-center gap-1">
+                            <p className="text-xs text-gray-400 flex items-center gap-1 flex-wrap">
                               <FiMail size={10} />
                               Dibaca oleh {notif.dibacaOleh} •{" "}
                               {formatTimeAgo(notif.tanggalBaca)}

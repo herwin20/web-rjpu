@@ -58,50 +58,58 @@ class DisbursementSheetService {
     await this.init();
     try {
       const data = await sheetsService.getAllData(this.sheetName, "A:AH");
-      return data
-        .map((row, i) => ({
-          id: i,
-          no: row["NO"] || "",
-          programId: row["PROGRAM ID"] || "",
-          programName: row["PROGRAM NAME"] || "",
-          kluster: row["KLUSTER"] || "",
-          bidang: row["BIDANG"] || "",
-          tahun: row["TAHUN"] || "",
-          estLevering: row["EST LEVERING (Bulan)"] || "0",
+      return (
+        data
+          .map((row, i) => ({
+            id: i,
+            no: row["NO"] || "",
+            programId: row["PROGRAM ID"] || "",
+            programName: row["PROGRAM NAME"] || "",
+            kluster: row["KLUSTER"] || "",
+            bidang: row["BIDANG"] || "",
+            tahun: row["TAHUN"] || "",
+            estLevering: row["EST LEVERING (Bulan)"] || "0",
 
-          materialVendor: row["MATERIAL VENDOR"] || "",
-          materialPoDate: row["MATERIAL PO DATE"] || "",
-          materialDeliveryPlan: row["MATERIAL DELIVERY PLAN"] || "",
-          materialActualDelivery: row["MATERIAL ACTUAL DELIVERY"] || "",
-          materialAmount: parseFloat(row["MATERIAL AMOUNT"]) || 0,
-          materialStatus: row["MATERIAL STATUS"] || "Planned",
+            materialVendor: row["MATERIAL VENDOR"] || "",
+            materialPoDate: row["MATERIAL PO DATE"] || "",
+            materialDeliveryPlan: row["MATERIAL DELIVERY PLAN"] || "",
+            materialActualDelivery: row["MATERIAL ACTUAL DELIVERY"] || "",
+            materialAmount: parseFloat(row["MATERIAL AMOUNT"]) || 0,
+            materialStatus: row["MATERIAL STATUS"] || "Planned",
 
-          serviceVendor: row["SERVICE VENDOR"] || "",
-          servicePoDate: row["SERVICE PO DATE"] || "",
-          serviceStartPlan: row["SERVICE START PLAN"] || "",
-          serviceStartActual: row["SERVICE START ACTUAL"] || "",
-          serviceEndPlan: row["SERVICE END PLAN"] || "",
-          serviceEndActual: row["SERVICE END ACTUAL"] || "",
-          serviceAmount: parseFloat(row["SERVICE AMOUNT"]) || 0,
-          serviceStatus: row["SERVICE STATUS"] || "Planned",
+            serviceVendor: row["SERVICE VENDOR"] || "",
+            servicePoDate: row["SERVICE PO DATE"] || "",
+            serviceStartPlan: row["SERVICE START PLAN"] || "",
+            serviceStartActual: row["SERVICE START ACTUAL"] || "",
+            serviceEndPlan: row["SERVICE END PLAN"] || "",
+            serviceEndActual: row["SERVICE END ACTUAL"] || "",
+            serviceAmount: parseFloat(row["SERVICE AMOUNT"]) || 0,
+            serviceStatus: row["SERVICE STATUS"] || "Planned",
 
-          equipmentVendor: row["EQUIPMENT VENDOR"] || "",
-          equipmentLeveringPlan: row["EQUIPMENT LEVERING PLAN"] || "",
-          equipmentLeveringActual: row["EQUIPMENT LEVERING ACTUAL"] || "",
-          equipmentStatus: row["EQUIPMENT STATUS"] || "Not Yet",
+            equipmentVendor: row["EQUIPMENT VENDOR"] || "",
+            equipmentLeveringPlan: row["EQUIPMENT LEVERING PLAN"] || "",
+            equipmentLeveringActual: row["EQUIPMENT LEVERING ACTUAL"] || "",
+            equipmentStatus: row["EQUIPMENT STATUS"] || "Not Yet",
 
-          executionStartPlan: row["EXECUTION START PLAN"] || "",
-          executionStartActual: row["EXECUTION START ACTUAL"] || "",
-          executionEndPlan: row["EXECUTION END PLAN"] || "",
-          executionEndActual: row["EXECUTION END ACTUAL"] || "",
+            executionStartPlan: row["EXECUTION START PLAN"] || "",
+            executionStartActual: row["EXECUTION START ACTUAL"] || "",
+            executionEndPlan: row["EXECUTION END PLAN"] || "",
+            executionEndActual: row["EXECUTION END ACTUAL"] || "",
 
-          overallStatus: row["OVERALL STATUS"] || "Not Started",
-          progressPercentage: parseInt(row["PROGRESS %"]) || 0,
-          notes: row["NOTES"] || "",
-          lastUpdated: row["LAST UPDATED"] || "",
-          updatedBy: row["UPDATED BY"] || "",
-        }))
-        .filter((d) => d.programId && d.programId.trim() !== "");
+            overallStatus: row["OVERALL STATUS"] || "Not Started",
+            progressPercentage: parseInt(row["PROGRESS %"]) || 0,
+            notes: row["NOTES"] || "",
+            lastUpdated: row["LAST UPDATED"] || "",
+            updatedBy: row["UPDATED BY"] || "",
+          }))
+          // PERBAIKAN 1: Jangan filter berdasarkan programId saja.
+          // Tampilkan jika NO atau PROGRAM NAME ada isinya.
+          .filter(
+            (d) =>
+              (d.no && d.no.trim() !== "") ||
+              (d.programName && d.programName.trim() !== ""),
+          )
+      );
     } catch (error) {
       console.error("Error getting disbursement data:", error);
       return [];
@@ -112,7 +120,6 @@ class DisbursementSheetService {
     await this.init();
 
     try {
-      // PERBAIKAN: Tambahkan 'await' sebelum getAllDisbursement()
       const allData = await this.getAllDisbursement();
 
       const existing = allData.find((d) => d.programId === programData.no);
@@ -123,7 +130,13 @@ class DisbursementSheetService {
         };
       }
 
-      const newNo = (allData.length + 1).toString().padStart(3, "0");
+      // PERBAIKAN 2: Hitung nomor urut baru berdasarkan nomor terbesar, bukan jumlah data
+      let maxNo = 0;
+      allData.forEach((d) => {
+        const num = parseInt(d.no);
+        if (!isNaN(num) && num > maxNo) maxNo = num;
+      });
+      const newNo = (maxNo + 1).toString().padStart(3, "0");
 
       // Buat array 34 kolom (A sampai AH)
       const newRow = Array(34).fill("");
@@ -143,11 +156,11 @@ class DisbursementSheetService {
       newRow[32] = new Date().toLocaleString("id-ID");
       newRow[33] = loginService.getCurrentUser()?.nama || "System";
 
-      const rowCount = await sheetsService.getRowCount(this.sheetName);
-      await sheetsService.writeData(
-        `${this.sheetName}!A${rowCount + 2}:AH${rowCount + 2}`,
-        [newRow],
-      );
+      // PERBAIKAN 3: Gunakan appendData, jangan gunakan getRowCount manual
+      const result = await sheetsService.appendData(this.sheetName, [newRow]);
+      if (!result.success) {
+        throw new Error("Gagal menambahkan data ke Google Sheets");
+      }
 
       return { success: true, message: "Disbursement created", no: newNo };
     } catch (error) {
