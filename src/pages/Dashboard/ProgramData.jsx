@@ -37,6 +37,9 @@ import strategiService from "../../api/strategiSheetService";
 import profilRiskService from "../../api/profileRiskService";
 import sheetsService from "../../api/googleSheetService"; // Tambahan untuk upload
 
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
+
 // ==================== Eskalasi Harga ====================
 const INFLASI_PER_TAHUN = 0.027; // 2,7% per tahun
 const TAHUN_REFERENSI_MULAI = 2020;
@@ -678,91 +681,971 @@ const ProgramData = ({ userRole }) => {
     }
   };
 
+  // ==================== EXPORT EXCEL RJPU ====================
+
   const handleExport = async () => {
     setLoadingExport(true);
+
     try {
       const filtered = getFilteredPrograms();
-      const csv = convertToCSV(filtered);
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `programs_${new Date().toISOString().split("T")[0]}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast("Data berhasil diekspor", "success");
+
+      if (!filtered || filtered.length === 0) {
+        showToast("Tidak ada data untuk diekspor", "error");
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+
+      workbook.creator = "RJPU Engineering";
+      workbook.company = "UP Muara Tawar";
+      workbook.subject = "Laporan Program Kerja RJPU";
+      workbook.title = "Rencana Jangka Panjang Unit";
+      workbook.created = new Date();
+
+      const COLORS = {
+        navy: "FF101B34",
+        blue: "FF1E4F91",
+        sky: "FF2563EB",
+        white: "FFFFFFFF",
+        light: "FFF1F5F9",
+        border: "FFDCE3EC",
+        text: "FF334155",
+        green: "FF047857",
+        greenLight: "FFD1FAE5",
+        purple: "FF7E22CE",
+        purpleLight: "FFF3E8FF",
+        blueLight: "FFDBEAFE",
+        red: "FFB91C1C",
+        redLight: "FFFEE2E2",
+        amber: "FFB45309",
+        amberLight: "FFFEF3C7",
+      };
+
+      const CURRENCY_FORMAT = '"Rp" #,##0;[Red]("Rp" #,##0);"-"';
+
+      const exportDate = new Date().toLocaleString("id-ID", {
+        timeZone: "Asia/Jakarta",
+      });
+
+      // ==================== HELPERS ====================
+
+      const toNumber = (value) => {
+        if (typeof value === "number") {
+          return Number.isFinite(value) ? value : 0;
+        }
+
+        let str = String(value ?? "")
+          .replace(/Rp/gi, "")
+          .replace(/\s/g, "")
+          .trim();
+
+        if (!str) return 0;
+
+        // Format Indonesia: 1.250.000,50
+        if (str.includes(",")) {
+          str = str.replace(/\./g, "").replace(",", ".");
+        } else if (/^-?\d{1,3}(\.\d{3})+$/.test(str)) {
+          str = str.replace(/\./g, "");
+        }
+
+        const number = Number(str);
+
+        return Number.isFinite(number) ? number : 0;
+      };
+
+      const sum = (data, field) =>
+        data.reduce((total, item) => total + toNumber(item[field]), 0);
+
+      const fill = (color) => ({
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: color },
+      });
+
+      const border = {
+        top: {
+          style: "thin",
+          color: { argb: COLORS.border },
+        },
+        left: {
+          style: "thin",
+          color: { argb: COLORS.border },
+        },
+        bottom: {
+          style: "thin",
+          color: { argb: COLORS.border },
+        },
+        right: {
+          style: "thin",
+          color: { argb: COLORS.border },
+        },
+      };
+
+      const columnLetter = (index) => {
+        let result = "";
+
+        while (index > 0) {
+          index--;
+
+          result = String.fromCharCode(65 + (index % 26)) + result;
+
+          index = Math.floor(index / 26);
+        }
+
+        return result;
+      };
+
+      // ==================== TITLE SHEET ====================
+
+      const setupTitle = (sheet, title, subtitle, count) => {
+        const lastColumn = columnLetter(count);
+
+        sheet.mergeCells(`A1:${lastColumn}1`);
+
+        const titleCell = sheet.getCell("A1");
+        titleCell.value = title;
+        titleCell.fill = fill(COLORS.navy);
+
+        titleCell.font = {
+          name: "Calibri",
+          size: 19,
+          bold: true,
+          color: { argb: COLORS.white },
+        };
+
+        titleCell.alignment = {
+          vertical: "middle",
+          horizontal: "left",
+          indent: 1,
+        };
+
+        sheet.getRow(1).height = 38;
+
+        sheet.mergeCells(`A2:${lastColumn}2`);
+
+        const subtitleCell = sheet.getCell("A2");
+
+        subtitleCell.value = subtitle;
+        subtitleCell.fill = fill(COLORS.blue);
+
+        subtitleCell.font = {
+          name: "Calibri",
+          size: 11,
+          color: { argb: COLORS.white },
+        };
+
+        subtitleCell.alignment = {
+          vertical: "middle",
+          indent: 2,
+        };
+
+        sheet.getRow(2).height = 25;
+
+        sheet.mergeCells(`A3:${lastColumn}3`);
+
+        const dateCell = sheet.getCell("A3");
+
+        dateCell.value =
+          `UP Muara Tawar | Export: ${exportDate} | ` +
+          `${filtered.length} program`;
+
+        dateCell.font = {
+          name: "Calibri",
+          size: 10,
+          italic: true,
+          color: { argb: COLORS.text },
+        };
+
+        sheet.getRow(3).height = 22;
+        sheet.getRow(4).height = 10;
+
+        sheet.properties.defaultRowHeight = 22;
+      };
+
+      // ==================== HEADER STYLE ====================
+
+      const styleHeader = (sheet, rowNumber, count) => {
+        const row = sheet.getRow(rowNumber);
+
+        row.height = 35;
+
+        for (let i = 1; i <= count; i++) {
+          const cell = row.getCell(i);
+
+          cell.fill = fill(COLORS.blue);
+
+          cell.font = {
+            name: "Calibri",
+            size: 10,
+            bold: true,
+            color: { argb: COLORS.white },
+          };
+
+          cell.alignment = {
+            horizontal: "center",
+            vertical: "middle",
+            wrapText: true,
+          };
+
+          cell.border = border;
+        }
+      };
+
+      // ==================== DATA ROW STYLE ====================
+
+      const styleDataRow = (row, count, index) => {
+        for (let i = 1; i <= count; i++) {
+          const cell = row.getCell(i);
+
+          cell.font = {
+            name: "Calibri",
+            size: 11,
+            color: { argb: COLORS.text },
+          };
+
+          cell.fill = fill(index % 2 === 0 ? COLORS.white : COLORS.light);
+
+          cell.border = border;
+
+          cell.alignment = {
+            vertical: "middle",
+            horizontal: "left",
+            wrapText: true,
+          };
+        }
+      };
+
+      // ==================== TOTAL ROW STYLE ====================
+
+      const styleTotal = (row, count) => {
+        row.height = 30;
+
+        for (let i = 1; i <= count; i++) {
+          const cell = row.getCell(i);
+
+          cell.fill = fill(COLORS.navy);
+          cell.border = border;
+
+          cell.font = {
+            name: "Calibri",
+            size: 11,
+            bold: true,
+            color: { argb: COLORS.white },
+          };
+
+          cell.alignment = {
+            vertical: "middle",
+            horizontal: i === 1 ? "left" : "right",
+          };
+        }
+      };
+
+      // ==================== STATUS COLOR ====================
+
+      const statusColors = {
+        selesai: {
+          bg: COLORS.greenLight,
+          text: COLORS.green,
+        },
+        "on progress": {
+          bg: COLORS.blueLight,
+          text: COLORS.blue,
+        },
+        diskusi: {
+          bg: COLORS.purpleLight,
+          text: COLORS.purple,
+        },
+        lanjut: {
+          bg: COLORS.blueLight,
+          text: COLORS.blue,
+        },
+        ditunda: {
+          bg: COLORS.amberLight,
+          text: COLORS.amber,
+        },
+        drop: {
+          bg: COLORS.redLight,
+          text: COLORS.red,
+        },
+        "belum dimulai": {
+          bg: COLORS.light,
+          text: COLORS.text,
+        },
+      };
+
+      const applyStatusColor = (cell, status) => {
+        const color =
+          statusColors[
+            String(status || "")
+              .trim()
+              .toLowerCase()
+          ];
+
+        if (!color) return;
+
+        cell.fill = fill(color.bg);
+
+        cell.font = {
+          name: "Calibri",
+          size: 10,
+          bold: true,
+          color: { argb: color.text },
+        };
+
+        cell.alignment = {
+          horizontal: "center",
+          vertical: "middle",
+          wrapText: true,
+        };
+      };
+
+      // ==========================================================
+      // SHEET 1 : DATA PROGRAM
+      // ==========================================================
+
+      const sheet = workbook.addWorksheet("Data Program", {
+        properties: {
+          tabColor: { argb: COLORS.blue },
+        },
+        views: [
+          {
+            state: "frozen",
+            xSplit: 2,
+            ySplit: 5,
+            topLeftCell: "C6",
+            showGridLines: false,
+          },
+        ],
+      });
+
+      const columns = [
+        { header: "NO", key: "no", width: 22 },
+        { header: "PROGRAM KERJA", key: "programKerja", width: 55 },
+        { header: "ALASAN PROGRAM", key: "alasanProgram", width: 55 },
+        { header: "KLUSTER PROGRAM", key: "klusterProgram", width: 25 },
+        { header: "OEM/NON OEM", key: "oemNonOem", width: 18 },
+        { header: "DASAR INPUT PROGRAM", key: "dasarInputProgram", width: 32 },
+        { header: "SASARAN RJPP", key: "sasaranRjpp", width: 35 },
+        { header: "SUMBER ANGGARAN", key: "sumberAnggaran", width: 20 },
+        { header: "EST LEVERING", key: "estLevering", width: 17 },
+        {
+          header: "LEVEL RESIKO INHERENT",
+          key: "levelResikoInherent",
+          width: 23,
+        },
+        {
+          header: "LEVEL RISIKO RESIDUAL",
+          key: "levelRisikoResidual",
+          width: 23,
+        },
+        { header: "SAT", key: "sat", width: 12 },
+        { header: "VOL", key: "vol", width: 12 },
+        { header: "TAHUN", key: "tahun", width: 12 },
+        { header: "HARGA TOTAL", key: "hargaTotal", width: 25 },
+        { header: "FILE", key: "file", width: 25 },
+        { header: "BIDANG", key: "bidang", width: 24 },
+        { header: "KATEGORI", key: "kategori", width: 22 },
+        { header: "HARGA MATERIAL", key: "hargaMaterial", width: 25 },
+        { header: "HARGA JASA", key: "hargaJasa", width: 25 },
+        { header: "TKDN", key: "tkdn", width: 18 },
+        { header: "STRATEGIS RJPU", key: "strategisRjpu", width: 22 },
+        { header: "ASET", key: "aset", width: 30 },
+        { header: "DESCRIPTION ASET", key: "descriptionAset", width: 45 },
+        { header: "KETERANGAN", key: "keterangan", width: 22 },
+        { header: "PROFIL RISK", key: "profilRisk", width: 22 },
+        { header: "AKTIVITAS AO", key: "aktivitasAo", width: 25 },
+      ];
+
+      sheet.columns = columns.map((col) => ({
+        key: col.key,
+        width: col.width,
+      }));
+
+      setupTitle(
+        sheet,
+        "RENCANA JANGKA PANJANG UNIT (RJPU)",
+        "DATABASE PROGRAM KERJA DAN RENCANA ANGGARAN",
+        27,
+      );
+
+      const HEADER_ROW = 5;
+      const FIRST_DATA_ROW = 6;
+
+      sheet.getRow(HEADER_ROW).values = columns.map((col) => col.header);
+
+      styleHeader(sheet, HEADER_ROW, 27);
+
+      // Warna khusus kelompok kolom anggaran
+      ["O5", "S5"].forEach((address) => {
+        sheet.getCell(address).fill = fill(COLORS.green);
+      });
+
+      sheet.getCell("T5").fill = fill(COLORS.purple);
+      sheet.getCell("Y5").fill = fill(COLORS.amber);
+
+      filtered.forEach((item, index) => {
+        const rowNumber = FIRST_DATA_ROW + index;
+
+        const values = columns.map((col) => {
+          const value = item[col.key];
+
+          if (["hargaTotal", "hargaMaterial", "hargaJasa"].includes(col.key)) {
+            return toNumber(value);
+          }
+
+          if (["tahun", "vol", "estLevering"].includes(col.key)) {
+            const raw = String(value ?? "").trim();
+
+            if (raw !== "" && Number.isFinite(Number(raw))) {
+              return Number(raw);
+            }
+          }
+
+          return String(value ?? "");
+        });
+
+        const row = sheet.getRow(rowNumber);
+
+        row.values = values;
+
+        styleDataRow(row, 27, index);
+
+        // Tinggi baris menyesuaikan isi program
+        const estimatedLines = Math.max(
+          Math.ceil(String(item.programKerja || "").length / 48),
+          Math.ceil(String(item.alasanProgram || "").length / 48),
+          Math.ceil(String(item.descriptionAset || "").length / 38),
+          1,
+        );
+
+        row.height = Math.min(180, Math.max(34, estimatedLines * 16 + 8));
+
+        // Kolom rata tengah
+        [1, 5, 8, 9, 10, 11, 12, 13, 14, 18, 21, 22, 25, 26].forEach((col) => {
+          row.getCell(col).alignment = {
+            horizontal: "center",
+            vertical: "middle",
+            wrapText: true,
+          };
+        });
+
+        // Nomor program
+        row.getCell(1).font = {
+          name: "Calibri",
+          size: 10,
+          bold: true,
+          color: { argb: COLORS.blue },
+        };
+
+        // Nama program
+        row.getCell(2).font = {
+          name: "Calibri",
+          size: 11,
+          bold: true,
+          color: { argb: COLORS.text },
+        };
+
+        // Format Rupiah numerik
+        [15, 19, 20].forEach((col) => {
+          const cell = row.getCell(col);
+
+          cell.numFmt = CURRENCY_FORMAT;
+
+          cell.alignment = {
+            horizontal: "right",
+            vertical: "middle",
+          };
+
+          cell.font = {
+            name: "Calibri",
+            size: 11,
+            bold: col === 15,
+            color: {
+              argb: col === 20 ? COLORS.purple : COLORS.green,
+            },
+          };
+        });
+
+        row.getCell(15).fill = fill(COLORS.greenLight);
+
+        // Warna kategori
+        const kategori = row.getCell(18);
+
+        if (item.kategori === "Material") {
+          kategori.fill = fill(COLORS.blueLight);
+        } else if (item.kategori === "Jasa") {
+          kategori.fill = fill(COLORS.purpleLight);
+        } else if (item.kategori === "Material & Jasa") {
+          kategori.fill = fill(COLORS.amberLight);
+        }
+
+        // Status program
+        applyStatusColor(row.getCell(25), item.keterangan);
+
+        // Hyperlink dokumen Google Drive
+        if (item.file && /^https?:\/\//i.test(String(item.file))) {
+          const fileCell = row.getCell(16);
+
+          fileCell.value = {
+            text: "Buka Dokumen",
+            hyperlink: String(item.file),
+            tooltip: String(item.file),
+          };
+
+          fileCell.font = {
+            name: "Calibri",
+            size: 10,
+            underline: true,
+            color: { argb: COLORS.sky },
+          };
+
+          fileCell.alignment = {
+            horizontal: "center",
+            vertical: "middle",
+          };
+        }
+      });
+
+      const lastDataRow = FIRST_DATA_ROW + filtered.length - 1;
+
+      // Filter Excel
+      sheet.autoFilter = {
+        from: `A${HEADER_ROW}`,
+        to: `AA${lastDataRow}`,
+      };
+
+      // Total anggaran
+      const totalRowNumber = lastDataRow + 1;
+      const totalRow = sheet.getRow(totalRowNumber);
+
+      sheet.mergeCells(`A${totalRowNumber}:N${totalRowNumber}`);
+
+      sheet.getCell(`A${totalRowNumber}`).value =
+        `TOTAL ANGGARAN (${filtered.length} PROGRAM)`;
+
+      const budgetColumns = [
+        ["O", "hargaTotal"],
+        ["S", "hargaMaterial"],
+        ["T", "hargaJasa"],
+      ];
+
+      budgetColumns.forEach(([letter, field]) => {
+        const cell = sheet.getCell(`${letter}${totalRowNumber}`);
+
+        cell.value = {
+          formula:
+            `SUBTOTAL(109,${letter}${FIRST_DATA_ROW}:` +
+            `${letter}${lastDataRow})`,
+          result: sum(filtered, field),
+        };
+
+        cell.numFmt = CURRENCY_FORMAT;
+      });
+
+      styleTotal(totalRow, 27);
+
+      sheet.pageSetup = {
+        paperSize: 9,
+        orientation: "landscape",
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        printTitlesRow: "1:5",
+        margins: {
+          left: 0.25,
+          right: 0.25,
+          top: 0.5,
+          bottom: 0.5,
+          header: 0.2,
+          footer: 0.2,
+        },
+      };
+
+      // ==========================================================
+      // SHEET 2 : SUMMARY
+      // ==========================================================
+
+      const summary = workbook.addWorksheet("Summary", {
+        properties: {
+          tabColor: { argb: COLORS.green },
+        },
+        views: [{ showGridLines: false }],
+      });
+
+      summary.columns = [
+        { width: 35 },
+        { width: 25 },
+        { width: 28 },
+        { width: 28 },
+        { width: 28 },
+      ];
+
+      setupTitle(
+        summary,
+        "EXECUTIVE SUMMARY RJPU",
+        "Ringkasan program kerja dan anggaran",
+        5,
+      );
+
+      const dataRange = (column) =>
+        `'Data Program'!${column}${FIRST_DATA_ROW}:` +
+        `${column}${lastDataRow}`;
+
+      const summaryItems = [
+        [
+          "Total Program",
+          {
+            formula: `COUNTA(${dataRange("B")})`,
+            result: filtered.filter(
+              (p) => String(p.programKerja ?? "").trim() !== "",
+            ).length,
+          },
+        ],
+        [
+          "Total Anggaran Material",
+          {
+            formula: `SUM(${dataRange("S")})`,
+            result: sum(filtered, "hargaMaterial"),
+          },
+        ],
+        [
+          "Total Anggaran Jasa",
+          {
+            formula: `SUM(${dataRange("T")})`,
+            result: sum(filtered, "hargaJasa"),
+          },
+        ],
+        [
+          "Total Anggaran RJPU",
+          {
+            formula: `SUM(${dataRange("O")})`,
+            result: sum(filtered, "hargaTotal"),
+          },
+        ],
+        [
+          "Rata-rata Anggaran per Program",
+          {
+            formula: `IFERROR(B9/${filtered.length},0)`,
+            result: sum(filtered, "hargaTotal") / filtered.length,
+          },
+        ],
+      ];
+
+      summary.getRow(5).values = ["INDIKATOR", "NILAI"];
+
+      styleHeader(summary, 5, 2);
+
+      summaryItems.forEach(([label, value], index) => {
+        const row = summary.getRow(index + 6);
+
+        row.values = [label, value];
+        row.height = 30;
+
+        styleDataRow(row, 2, index);
+
+        if (index > 0) {
+          row.getCell(2).numFmt = CURRENCY_FORMAT;
+        }
+
+        row.getCell(2).font = {
+          name: "Calibri",
+          size: 13,
+          bold: true,
+          color: { argb: COLORS.green },
+        };
+
+        row.getCell(2).alignment = {
+          horizontal: "right",
+          vertical: "middle",
+        };
+      });
+
+      styleTotal(summary.getRow(9), 2);
+
+      // ==================== REKAP STATUS ====================
+
+      summary.mergeCells("A13:E13");
+
+      summary.getCell("A13").value = "REKAP BERDASARKAN STATUS PROGRAM";
+
+      styleHeader(summary, 13, 5);
+
+      summary.getRow(14).values = [
+        "STATUS PROGRAM",
+        "JUMLAH PROGRAM",
+        "ANGGARAN MATERIAL",
+        "ANGGARAN JASA",
+        "TOTAL ANGGARAN",
+      ];
+
+      styleHeader(summary, 14, 5);
+
+      const statuses = [
+        ...new Set(
+          filtered.map(
+            (item) =>
+              String(item.keterangan ?? "").trim() || "Belum Ada Status",
+          ),
+        ),
+      ].sort((a, b) => a.localeCompare(b, "id"));
+
+      statuses.forEach((status, index) => {
+        const items = filtered.filter(
+          (item) =>
+            (String(item.keterangan ?? "").trim() || "Belum Ada Status") ===
+            status,
+        );
+
+        const row = summary.getRow(15 + index);
+
+        row.values = [
+          status,
+          items.length,
+          sum(items, "hargaMaterial"),
+          sum(items, "hargaJasa"),
+          sum(items, "hargaTotal"),
+        ];
+
+        styleDataRow(row, 5, index);
+
+        applyStatusColor(row.getCell(1), status);
+
+        [3, 4, 5].forEach((col) => {
+          row.getCell(col).numFmt = CURRENCY_FORMAT;
+        });
+      });
+
+      const statusTotalRow = summary.getRow(15 + statuses.length);
+
+      statusTotalRow.values = [
+        "TOTAL",
+        filtered.length,
+        sum(filtered, "hargaMaterial"),
+        sum(filtered, "hargaJasa"),
+        sum(filtered, "hargaTotal"),
+      ];
+
+      styleTotal(statusTotalRow, 5);
+
+      [3, 4, 5].forEach((col) => {
+        statusTotalRow.getCell(col).numFmt = CURRENCY_FORMAT;
+      });
+
+      // ==========================================================
+      // SHEET 3 & 4 : REKAP BIDANG DAN TAHUN
+      // ==========================================================
+
+      const createRecapSheet = ({
+        name,
+        title,
+        groupKey,
+        groupLabel,
+        tabColor,
+      }) => {
+        const recap = workbook.addWorksheet(name, {
+          properties: {
+            tabColor: { argb: tabColor },
+          },
+          views: [
+            {
+              state: "frozen",
+              xSplit: 1,
+              ySplit: 5,
+              showGridLines: false,
+            },
+          ],
+        });
+
+        recap.columns = [
+          { width: 32 },
+          { width: 18 },
+          { width: 18 },
+          { width: 18 },
+          { width: 18 },
+          { width: 25 },
+          { width: 25 },
+          { width: 27 },
+          { width: 19 },
+          { width: 25 },
+        ];
+
+        setupTitle(
+          recap,
+          title,
+          "Rekap jumlah program dan alokasi anggaran",
+          10,
+        );
+
+        recap.getRow(5).values = [
+          groupLabel,
+          "TOTAL PROGRAM",
+          "MATERIAL",
+          "JASA",
+          "MATERIAL & JASA",
+          "ANGGARAN MATERIAL",
+          "ANGGARAN JASA",
+          "TOTAL ANGGARAN",
+          "% ANGGARAN",
+          "RATA-RATA / PROGRAM",
+        ];
+
+        styleHeader(recap, 5, 10);
+
+        const groups = new Map();
+
+        filtered.forEach((item) => {
+          const key = String(item[groupKey] ?? "").trim() || "Belum Ditentukan";
+
+          if (!groups.has(key)) {
+            groups.set(key, []);
+          }
+
+          groups.get(key).push(item);
+        });
+
+        const entries = [...groups.entries()].sort(([a], [b]) =>
+          a.localeCompare(b, "id", { numeric: true }),
+        );
+
+        const grandTotal = sum(filtered, "hargaTotal");
+
+        entries.forEach(([group, items], index) => {
+          const row = recap.getRow(index + 6);
+
+          const totalMaterial = sum(items, "hargaMaterial");
+          const totalJasa = sum(items, "hargaJasa");
+          const totalAnggaran = sum(items, "hargaTotal");
+
+          row.values = [
+            group,
+            items.length,
+            items.filter((p) => p.kategori === "Material").length,
+            items.filter((p) => p.kategori === "Jasa").length,
+            items.filter((p) => p.kategori === "Material & Jasa").length,
+            totalMaterial,
+            totalJasa,
+            totalAnggaran,
+            grandTotal > 0 ? totalAnggaran / grandTotal : 0,
+            items.length ? totalAnggaran / items.length : 0,
+          ];
+
+          row.height = 28;
+
+          styleDataRow(row, 10, index);
+
+          [6, 7, 8, 10].forEach((col) => {
+            row.getCell(col).numFmt = CURRENCY_FORMAT;
+          });
+
+          row.getCell(9).numFmt = "0.00%";
+
+          row.getCell(8).fill = fill(COLORS.greenLight);
+
+          row.getCell(8).font = {
+            name: "Calibri",
+            size: 11,
+            bold: true,
+            color: { argb: COLORS.green },
+          };
+        });
+
+        const lastRow = entries.length + 5;
+        const totalRowNumber = lastRow + 1;
+        const totalRow = recap.getRow(totalRowNumber);
+
+        totalRow.getCell(1).value = "GRAND TOTAL";
+
+        for (let col = 2; col <= 8; col++) {
+          const letter = columnLetter(col);
+
+          const cachedResult = entries.reduce(
+            (acc, _, index) =>
+              acc + toNumber(recap.getRow(index + 6).getCell(col).value),
+            0,
+          );
+
+          totalRow.getCell(col).value = {
+            formula: `SUM(${letter}6:${letter}${lastRow})`,
+            result: cachedResult,
+          };
+        }
+
+        totalRow.getCell(9).value = {
+          formula: `SUM(I6:I${lastRow})`,
+          result: grandTotal > 0 ? 1 : 0,
+        };
+
+        totalRow.getCell(10).value = {
+          formula: `IFERROR(H${totalRowNumber}/B${totalRowNumber},0)`,
+          result: grandTotal / filtered.length,
+        };
+
+        styleTotal(totalRow, 10);
+
+        [6, 7, 8, 10].forEach((col) => {
+          totalRow.getCell(col).numFmt = CURRENCY_FORMAT;
+        });
+
+        totalRow.getCell(9).numFmt = "0.00%";
+
+        recap.autoFilter = {
+          from: "A5",
+          to: `J${lastRow}`,
+        };
+
+        return recap;
+      };
+
+      createRecapSheet({
+        name: "Rekap Bidang",
+        title: "REKAP ANGGARAN PER BIDANG",
+        groupKey: "bidang",
+        groupLabel: "BIDANG",
+        tabColor: COLORS.purple,
+      });
+
+      createRecapSheet({
+        name: "Rekap Tahunan",
+        title: "REKAP ANGGARAN PER TAHUN",
+        groupKey: "tahun",
+        groupLabel: "TAHUN",
+        tabColor: COLORS.amber,
+      });
+
+      // ==========================================================
+      // GENERATE & DOWNLOAD EXCEL
+      // ==========================================================
+
+      workbook.calcProperties.fullCalcOnLoad = true;
+
+      const buffer = await workbook.xlsx.writeBuffer();
+
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      const date = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Jakarta",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      })
+        .format(new Date())
+        .replace(/\//g, "-");
+
+      saveAs(blob, `Laporan_RJPU_${date}.xlsx`);
+
+      showToast(
+        `Berhasil mengekspor ${filtered.length} program ke Excel`,
+        "success",
+      );
     } catch (error) {
-      showToast("Gagal mengekspor data: " + error.message, "error");
+      console.error("Error Export Excel:", error);
+
+      showToast("Gagal mengekspor Excel: " + error.message, "error");
     } finally {
       setLoadingExport(false);
     }
-  };
-
-  const convertToCSV = (data) => {
-    const headers = [
-      "NO",
-      "PROGRAM KERJA",
-      "ALASAN PROGRAM",
-      "KLUSTER PROGRAM",
-      "OEM/NON OEM",
-      "DASAR INPUT PROGRAM",
-      "SASARAN RJPP",
-      "SUMBER ANGGARAN",
-      "EST LEVERING",
-      "LEVEL RESIKO INHERENT",
-      "LEVEL RISIKO RESIDUAL",
-      "SAT",
-      "VOL",
-      "TAHUN",
-      "HARGA TOTAL",
-      "FILE",
-      "BIDANG",
-      "KATEGORI",
-      "HARGA MATERIAL",
-      "HARGA JASA",
-      "TKDN",
-      "STRATEGIS RJPU",
-      "ASET",
-      "DESCRIPTION ASET",
-      "KETERANGAN",
-      "PROFIL RISK",
-      "AKTIVITAS AO",
-    ];
-    const fieldMap = {
-      NO: "no",
-      "PROGRAM KERJA": "programKerja",
-      "ALASAN PROGRAM": "alasanProgram",
-      "KLUSTER PROGRAM": "klusterProgram",
-      "OEM/NON OEM": "oemNonOem",
-      "DASAR INPUT PROGRAM": "dasarInputProgram",
-      "SASARAN RJPP": "sasaranRjpp",
-      "SUMBER ANGGARAN": "sumberAnggaran",
-      "EST LEVERING": "estLevering",
-      "LEVEL RESIKO INHERENT": "levelResikoInherent",
-      "LEVEL RISIKO RESIDUAL": "levelRisikoResidual",
-      SAT: "sat",
-      VOL: "vol",
-      TAHUN: "tahun",
-      "HARGA TOTAL": "hargaTotal",
-      FILE: "file",
-      BIDANG: "bidang",
-      KATEGORI: "kategori",
-      "HARGA MATERIAL": "hargaMaterial",
-      "HARGA JASA": "hargaJasa",
-      TKDN: "tkdn",
-      "STRATEGIS RJPU": "strategisRjpu",
-      ASET: "aset",
-      "DESCRIPTION ASET": "descriptionAset",
-      KETERANGAN: "keterangan",
-      "PROFIL RISK": "profilRisk",
-      "AKTIVITAS AO": "aktivitasAo",
-    };
-    const rows = data.map((item) =>
-      headers.map((h) => item[fieldMap[h]] || ""),
-    );
-    return [headers, ...rows]
-      .map((row) => row.map((cell) => `"${cell || ""}"`).join(","))
-      .join("\n");
   };
 
   const formatCurrency = (amount) => {
