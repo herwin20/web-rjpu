@@ -1,7 +1,6 @@
 // api/dataSheetService.js
 import sheetsService from "./googleSheetService";
 import loginService from "./loginSheetService";
-
 class DataSheetOperations {
   constructor() {
     this.sheetName = "Data";
@@ -34,7 +33,6 @@ class DataSheetOperations {
       PROFIL_RISK: 25,
       AKTIVITAS_AO: 26, // Kolom baru di AA
     };
-
     this.columnNames = [
       "NO",
       "PROGRAM KERJA",
@@ -64,11 +62,9 @@ class DataSheetOperations {
       "PROFIL RISK",
       "AKTIVITAS AO", // Header baru
     ];
-
     this.dataRange = "A:AA"; // Diperluas sampai AA
     this.lastColumnLetter = "AA";
     this.validKategori = ["Material", "Jasa", "Material & Jasa"];
-
     // ==== Cache & flag untuk mengurangi request ====
     this._headersEnsured = false;
     this._headersEnsuredAt = 0;
@@ -79,7 +75,6 @@ class DataSheetOperations {
     this._allDataCacheTime = 0;
     this.ALL_DATA_TTL = 15 * 1000; // 15 detik
   }
-
   // ============================================================
   // HELPERS
   // ============================================================
@@ -118,11 +113,9 @@ class DataSheetOperations {
       };
     }
   }
-
   escapeRegex(str) {
     return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
-
   normalizeKodeAwal(kodeAwal) {
     if (!kodeAwal) return "";
     return kodeAwal
@@ -131,13 +124,11 @@ class DataSheetOperations {
       .toUpperCase()
       .replace(/^([A-Z])-/, "$1");
   }
-
   generateProgramId(kodeAwal, urutan) {
     if (!kodeAwal) return `MT-XX-${String(urutan).padStart(3, "0")}`;
     const normalized = this.normalizeKodeAwal(kodeAwal);
     return `MT-${normalized}-${String(urutan).padStart(3, "0")}`;
   }
-
   getNextSequenceForKode(kodeAwal, allData) {
     if (!kodeAwal) return 1;
     const normalized = this.normalizeKodeAwal(kodeAwal);
@@ -156,7 +147,6 @@ class DataSheetOperations {
     }
     return maxSeq + 1;
   }
-
   validateKategoriHarga(data) {
     const kategori = data.kategori || "";
     if (!this.validKategori.includes(kategori)) {
@@ -193,12 +183,10 @@ class DataSheetOperations {
       hargaTotal: hM + hJ,
     };
   }
-
   invalidateAllDataCache() {
     this._allDataCache = null;
     this._allDataCacheTime = 0;
   }
-
   // ============================================================
   // INIT
   // ============================================================
@@ -222,7 +210,6 @@ class DataSheetOperations {
       this._notificationSheetEnsuredAt = now;
     }
   }
-
   async ensureHeaders() {
     try {
       const rawData = await sheetsService.getRawData(this.sheetName, "A:AA");
@@ -250,7 +237,6 @@ class DataSheetOperations {
       console.error("Error ensuring headers:", error);
     }
   }
-
   async ensureNotificationSheet() {
     try {
       const notificationExists =
@@ -275,7 +261,6 @@ class DataSheetOperations {
       console.error("Error ensuring notification sheet:", error);
     }
   }
-
   // ============================================================
   // NOTIFICATION
   // ============================================================
@@ -284,7 +269,6 @@ class DataSheetOperations {
     const random = Math.floor(Math.random() * 1000);
     return `NOTIF-${timestamp}-${random}`;
   }
-
   getTanggalSekarang() {
     return new Date().toLocaleString("id-ID", {
       year: "numeric",
@@ -295,7 +279,6 @@ class DataSheetOperations {
       second: "2-digit",
     });
   }
-
   async addNotification(programNo, programKerja, pengirim, bidangPengirim) {
     try {
       const notificationId = this.generateNotificationId();
@@ -328,7 +311,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   async addNotificationsBatch(programs, pengirim) {
     if (!Array.isArray(programs) || programs.length === 0) {
       return { success: true, message: "No notifications to add" };
@@ -358,7 +340,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   async getAllNotifications() {
     await this.init();
     try {
@@ -394,12 +375,10 @@ class DataSheetOperations {
       return [];
     }
   }
-
   async getUnreadNotifications() {
     const all = await this.getAllNotifications();
     return all.filter((n) => n.status === "UNREAD");
   }
-
   async markNotificationAsRead(notificationId, readerName) {
     try {
       const all = await sheetsService.getRawData("Notification", "A:J");
@@ -423,7 +402,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   async markAllNotificationsAsRead(programNo, readerName) {
     try {
       const all = await sheetsService.getRawData("Notification", "A:J");
@@ -460,7 +438,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   async deleteNotificationsByProgramNo(programNo) {
     try {
       const all = await sheetsService.getRawData("Notification", "A:J");
@@ -491,7 +468,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   // ============================================================
   // GET ALL DATA
   // ============================================================
@@ -511,7 +487,6 @@ class DataSheetOperations {
         this.dataRange,
       );
       const userFilter = await this.getUserFilter();
-
       let processedData = data.map((row) => {
         const isObj = !Array.isArray(row);
         return {
@@ -582,12 +557,10 @@ class DataSheetOperations {
             : row[this.columns.AKTIVITAS_AO] || "",
         };
       });
-
       let filteredData = processedData.filter(
         (item) =>
           item.programKerja && item.programKerja.toString().trim() !== "",
       );
-
       if (!userFilter.isAdmin && userFilter.bidangFilter) {
         filteredData = filteredData.filter(
           (item) => item.bidang === userFilter.bidangFilter,
@@ -601,7 +574,6 @@ class DataSheetOperations {
       return [];
     }
   }
-
   async getRawData() {
     await this.init();
     try {
@@ -611,7 +583,6 @@ class DataSheetOperations {
       return [];
     }
   }
-
   // ============================================================
   // GETTERS
   // ============================================================
@@ -623,44 +594,36 @@ class DataSheetOperations {
       return null;
     return data;
   }
-
   async getDataByYear(tahun) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.tahun === tahun.toString());
   }
-
   async getDataByKluster(kluster) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.klusterProgram === kluster);
   }
-
   async getDataBySumberAnggaran(sumber) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.sumberAnggaran === sumber);
   }
-
   async getDataByBidang(bidang) {
     const userFilter = await this.getUserFilter();
     if (!userFilter.isAdmin && bidang !== userFilter.bidangFilter) return [];
     const allData = await this.getAllData();
     return allData.filter((item) => item.bidang === bidang);
   }
-
   async getDataByKategori(kategori) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.kategori === kategori);
   }
-
   async getDataByAset(aset) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.aset === aset);
   }
-
   async getDataByTkdn(tkdn) {
     const allData = await this.getAllData();
     return allData.filter((item) => item.tkdn === tkdn);
   }
-
   async hasAccessToData(no) {
     const userFilter = await this.getUserFilter();
     if (userFilter.isAdmin) return true;
@@ -668,10 +631,53 @@ class DataSheetOperations {
     if (!data) return false;
     return data.bidang === userFilter.bidangFilter;
   }
-
   // ============================================================
   // ADD DATA
   // ============================================================
+  // Penulisan eksplisit dari kolom A, tanpa deteksi tabel append.
+  async appendRowsFromColumnA(sheetName, lastColumn, width, rows, raw = null) {
+    if (
+      !Array.isArray(rows) ||
+      !rows.length ||
+      rows.some((row) => !Array.isArray(row) || row.length !== width)
+    ) {
+      throw new Error("Jumlah baris atau kolom tidak sesuai.");
+    }
+    const existing =
+      raw ?? (await sheetsService.getRawData(sheetName, `A:${lastColumn}`));
+    if (
+      !Array.isArray(existing) ||
+      !existing.length ||
+      String(existing[0]?.[0] ?? "")
+        .trim()
+        .toUpperCase() !== "NO"
+    ) {
+      throw new Error(`Header NO tidak ditemukan di ${sheetName}!A1.`);
+    }
+    const startRow = Math.max(2, existing.length + 1);
+    const endRow = startRow + rows.length - 1;
+    const range = `${sheetName}!A${startRow}:${lastColumn}${endRow}`;
+    console.log("[RJPU] Target write:", range);
+    const result = await sheetsService.writeData(range, rows);
+    if (result === false || result?.success === false) {
+      throw new Error(result?.message || "Gagal menulis data.");
+    }
+    return { success: true, range, startRow, endRow, result };
+  }
+  // Baca nomor semua bidang langsung dari sheet, tanpa cache/filter UI.
+  async getProgramNumbersRaw() {
+    const raw = await sheetsService.getRawData(this.sheetName, this.dataRange);
+    if (
+      !Array.isArray(raw) ||
+      !raw.length ||
+      String(raw[0]?.[0] ?? "")
+        .trim()
+        .toUpperCase() !== "NO"
+    ) {
+      throw new Error("Header NO tidak ditemukan di Data!A1.");
+    }
+    return raw;
+  }
   async addData(data) {
     await this.init();
     const userFilter = await this.getUserFilter();
@@ -685,9 +691,11 @@ class DataSheetOperations {
     const kodeAwal = data.strategisRjpu || "";
     if (!kodeAwal)
       return { success: false, message: "Strategis RJPU wajib dipilih" };
-
     try {
-      const allData = await this.getAllData();
+      const rawData = await this.getProgramNumbersRaw();
+      const allData = rawData
+        .slice(1)
+        .map((row) => ({ no: row?.[this.columns.NO] ?? "" }));
       const nextSeq = this.getNextSequenceForKode(kodeAwal, allData);
       const programId = this.generateProgramId(kodeAwal, nextSeq);
       const newRow = [
@@ -719,13 +727,17 @@ class DataSheetOperations {
         data.profilRisk || "",
         data.aktivitasAo || "", // Tambahan AKTIVITAS AO
       ];
-
-      const result = await sheetsService.appendData(this.sheetName, [newRow]);
+      const result = await this.appendRowsFromColumnA(
+        this.sheetName,
+        this.lastColumnLetter,
+        this.columnNames.length,
+        [newRow],
+        rawData,
+      );
       const currentUser = loginService.getCurrentUser();
       const pengirim = currentUser ? currentUser.nama : "System";
       const bidangPengirim =
         data.bidang || userFilter.bidangFilter || "Unknown";
-
       await this.addNotification(
         programId,
         data.programKerja,
@@ -733,7 +745,6 @@ class DataSheetOperations {
         bidangPengirim,
       );
       this.invalidateAllDataCache();
-
       return {
         success: true,
         message: "Data added successfully",
@@ -746,7 +757,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   // ============================================================
   // UPDATE DATA
   // ============================================================
@@ -772,7 +782,6 @@ class DataSheetOperations {
       }
       if (rowIndex === -1)
         return { success: false, message: `Data with NO ${no} not found` };
-
       const currentRow = allDataRaw[rowIndex] || [];
       if (
         !userFilter.isAdmin &&
@@ -788,7 +797,6 @@ class DataSheetOperations {
       ) {
         return { success: false, message: "Access denied" };
       }
-
       const getVal = (key, colIndex) =>
         updatedData[key] !== undefined
           ? updatedData[key]
@@ -800,7 +808,6 @@ class DataSheetOperations {
       };
       const v = this.validateKategoriHarga(mergedData);
       if (!v.valid) return { success: false, message: v.message };
-
       const updatedRow = [
         no.toString(),
         getVal("programKerja", this.columns.PROGRAM_KERJA),
@@ -830,10 +837,12 @@ class DataSheetOperations {
         getVal("profilRisk", this.columns.PROFIL_RISK),
         getVal("aktivitasAo", this.columns.AKTIVITAS_AO), // Tambahan AKTIVITAS AO
       ];
-
       // Range diperluas ke AA
       const range = `${this.sheetName}!A${sheetRow}:AA${sheetRow}`;
       const result = await sheetsService.writeData(range, [updatedRow]);
+      if (result === false || result?.success === false) {
+        throw new Error(result?.message || "Gagal update program.");
+      }
       this.invalidateAllDataCache();
       return {
         success: true,
@@ -845,7 +854,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   // ============================================================
   // DELETE DATA
   // ============================================================
@@ -872,7 +880,6 @@ class DataSheetOperations {
         }
       }
       if (rowIndex === -1) return { success: false, message: `Data not found` };
-
       await this.deleteNotificationsByProgramNo(no);
       const sheetRow = rowIndex + 1;
       const emptyRow = Array(this.columnNames.length).fill("");
@@ -881,7 +888,6 @@ class DataSheetOperations {
         `${this.sheetName}!A${sheetRow}:AA${sheetRow}`,
         [emptyRow],
       );
-
       await this.renumberData();
       this.invalidateAllDataCache();
       return { success: true, message: `Data deleted successfully` };
@@ -890,7 +896,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   async renumberData() {
     try {
       const allDataRaw = await sheetsService.getRawData(
@@ -928,7 +933,6 @@ class DataSheetOperations {
       return false;
     }
   }
-
   // ============================================================
   // MOVE TO DROP
   // ============================================================
@@ -944,7 +948,6 @@ class DataSheetOperations {
       );
       if (!allDataRaw || allDataRaw.length <= 1)
         return { success: false, message: `No data found` };
-
       let rowIndex = -1;
       let rowData = null;
       for (let i = 1; i < allDataRaw.length; i++) {
@@ -961,7 +964,6 @@ class DataSheetOperations {
       }
       if (rowIndex === -1 || !rowData)
         return { success: false, message: `Data not found` };
-
       const dropDate = this.getTanggalSekarang();
       const dropRow = [
         rowData[this.columns.NO] || "",
@@ -995,7 +997,6 @@ class DataSheetOperations {
         rowData[this.columns.PROFIL_RISK] || "",
         rowData[this.columns.AKTIVITAS_AO] || "", // Tambahan AKTIVITAS AO
       ];
-
       const dropExists = await sheetsService.sheetExists("Drop");
       if (!dropExists) {
         await sheetsService.writeData("Drop!A1:AD1", [
@@ -1036,11 +1037,11 @@ class DataSheetOperations {
         await sheetsService.updateCell("Drop!AC1", "PROFIL RISK");
         await sheetsService.updateCell("Drop!AD1", "AKTIVITAS AO");
       }
-
-      const appendResult = await sheetsService.appendData("Drop", [dropRow]);
+      const appendResult = await this.appendRowsFromColumnA("Drop", "AD", 30, [
+        dropRow,
+      ]);
       if (!appendResult.success)
         return { success: false, message: "Failed to move data to Drop" };
-
       await this.deleteNotificationsByProgramNo(no);
       const sheetRow = rowIndex + 1;
       const emptyRow = Array(this.columnNames.length).fill("");
@@ -1048,7 +1049,6 @@ class DataSheetOperations {
         `${this.sheetName}!A${sheetRow}:AA${sheetRow}`,
         [emptyRow],
       );
-
       await this.renumberData();
       this.invalidateAllDataCache();
       return { success: true, message: `Data moved to Drop successfully` };
@@ -1057,7 +1057,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   // ============================================================
   // RESTORE FROM DROP
   // ============================================================
@@ -1066,7 +1065,6 @@ class DataSheetOperations {
     if (!userFilter.isAdmin)
       return { success: false, message: "Akses ditolak" };
     await this.init();
-
     const normalizeHeader = (value) =>
       String(value ?? "")
         .trim()
@@ -1074,16 +1072,13 @@ class DataSheetOperations {
         .toUpperCase();
     const asString = (value) => String(value ?? "").trim();
     const equals = (a, b) => asString(a) === asString(b);
-
     try {
       const target = asString(originalNo);
       if (!target) throw new Error("NO program belum dipilih.");
-
       // Baca sampai AD karena Drop sekarang punya tambahan AKTIVITAS AO
       const dropRaw = await sheetsService.getRawData("Drop", "A:AD");
       if (!Array.isArray(dropRaw) || dropRaw.length <= 1)
         throw new Error("Sheet Drop kosong.");
-
       const dropHeaders = dropRaw[0] || [];
       const dropIndex = new Map(
         dropHeaders.map((name, i) => [normalizeHeader(name), i]),
@@ -1092,7 +1087,6 @@ class DataSheetOperations {
       const originalIndex = dropIndex.get("ORIGINAL NO");
       if (noIndex === undefined)
         throw new Error("Kolom NO tidak ditemukan di sheet Drop.");
-
       const dropRowIndex = dropRaw.findIndex((row, i) => {
         if (i === 0 || !Array.isArray(row)) return false;
         return (
@@ -1102,23 +1096,19 @@ class DataSheetOperations {
       });
       if (dropRowIndex === -1)
         throw new Error(`Data dengan NO ${target} tidak ditemukan di Drop.`);
-
       const sourceRow = dropRaw[dropRowIndex];
       const restoredRow = this.columnNames.map((columnName) => {
         const sourceIndex = dropIndex.get(normalizeHeader(columnName));
         return sourceIndex === undefined ? "" : (sourceRow[sourceIndex] ?? "");
       });
-
       if (!asString(restoredRow[this.columns.PROGRAM_KERJA]))
         throw new Error("PROGRAM KERJA pada data Drop kosong.");
       const bidang = asString(restoredRow[this.columns.BIDANG]);
       if (/^MT-[A-Z0-9-]+-\d+$/i.test(bidang))
         throw new Error("BIDANG di sheet Drop berisi ID program.");
-
       const dataRaw = await sheetsService.getRawData(this.sheetName, "A:AA");
       if (!Array.isArray(dataRaw) || dataRaw.length === 0)
         throw new Error("Sheet Data tidak memiliki header.");
-
       const kodeAwal =
         asString(restoredRow[this.columns.STRATEGIS_RJPU]) || "XX";
       const existingData = dataRaw.slice(1).map((row) => ({
@@ -1127,18 +1117,20 @@ class DataSheetOperations {
       const nextSequence = this.getNextSequenceForKode(kodeAwal, existingData);
       const newNo = this.generateProgramId(kodeAwal, nextSequence);
       restoredRow[this.columns.NO] = newNo;
-
       const targetSheetRow = Math.max(2, dataRaw.length + 1);
       // Tulis sampai AA
       const dataRange = `${this.sheetName}!A${targetSheetRow}:AA${targetSheetRow}`;
-      await sheetsService.writeData(dataRange, [restoredRow]);
-
+      const restoreResult = await sheetsService.writeData(dataRange, [
+        restoredRow,
+      ]);
+      if (restoreResult === false || restoreResult?.success === false) {
+        throw new Error(restoreResult?.message || "Gagal restore ke Data.");
+      }
       // Hapus baris sumber Drop
       const dropSheetRow = dropRowIndex + 1;
       await sheetsService.writeData(`Drop!A${dropSheetRow}:AD${dropSheetRow}`, [
         Array(30).fill(""),
       ]);
-
       this.invalidateAllDataCache();
       return {
         success: true,
@@ -1152,7 +1144,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   // ============================================================
   // SEARCH & SUMMARY
   // ============================================================
@@ -1165,7 +1156,6 @@ class DataSheetOperations {
       ),
     );
   }
-
   async getSummaryByYear() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1179,7 +1169,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getSummaryByKluster() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1193,7 +1182,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getSummaryBySumberAnggaran() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1207,7 +1195,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getSummaryByBidang() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1222,7 +1209,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getSummaryByKategori() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1244,7 +1230,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getSummaryByAset() {
     const allData = await this.getAllData();
     const summary = {};
@@ -1258,7 +1243,6 @@ class DataSheetOperations {
     });
     return summary;
   }
-
   async getFileLink(no) {
     const data = await this.getDataByNo(no);
     if (data && data.file)
@@ -1269,7 +1253,6 @@ class DataSheetOperations {
       };
     return { success: false, message: `No file found` };
   }
-
   async updateFileLink(no, driveFileLink) {
     return await this.updateData(no, { file: driveFileLink });
   }
@@ -1297,7 +1280,6 @@ class DataSheetOperations {
   async updateProfilRisk(no, profilRisk) {
     return await this.updateData(no, { profilRisk });
   }
-
   // ============================================================
   // BULK INSERT
   // ============================================================
@@ -1305,11 +1287,13 @@ class DataSheetOperations {
     await this.init();
     const userFilter = await this.getUserFilter();
     try {
-      const allData = await this.getAllData();
+      const rawData = await this.getProgramNumbersRaw();
+      const allData = rawData
+        .slice(1)
+        .map((row) => ({ no: row?.[this.columns.NO] ?? "" }));
       const counters = {};
       const rows = [];
       const addedPrograms = [];
-
       for (let i = 0; i < dataArray.length; i++) {
         const item = dataArray[i];
         if (!userFilter.isAdmin) {
@@ -1320,19 +1304,20 @@ class DataSheetOperations {
         const v = this.validateKategoriHarga(item);
         if (!v.valid)
           return { success: false, message: `Baris ${i + 1}: ${v.message}` };
-
         const kodeAwal = item.strategisRjpu;
         if (!kodeAwal)
           return {
             success: false,
             message: `Baris ${i + 1}: Strategis RJPU wajib diisi`,
           };
-
-        if (!counters[kodeAwal])
-          counters[kodeAwal] = this.getNextSequenceForKode(kodeAwal, allData);
-        const seq = counters[kodeAwal]++;
+        const normalizedKode = this.normalizeKodeAwal(kodeAwal);
+        if (!counters[normalizedKode])
+          counters[normalizedKode] = this.getNextSequenceForKode(
+            kodeAwal,
+            allData,
+          );
+        const seq = counters[normalizedKode]++;
         const programId = this.generateProgramId(kodeAwal, seq);
-
         rows.push([
           programId,
           item.programKerja || "",
@@ -1362,15 +1347,19 @@ class DataSheetOperations {
           item.profilRisk || "",
           item.aktivitasAo || "", // Aktivitas AO Bulk
         ]);
-
         addedPrograms.push({
           programId,
           programKerja: item.programKerja,
           bidang: item.bidang || userFilter.bidangFilter,
         });
       }
-
-      const result = await sheetsService.appendData(this.sheetName, rows);
+      const result = await this.appendRowsFromColumnA(
+        this.sheetName,
+        this.lastColumnLetter,
+        this.columnNames.length,
+        rows,
+        rawData,
+      );
       const currentUser = loginService.getCurrentUser();
       const pengirim = currentUser ? currentUser.nama : "System";
       await this.addNotificationsBatch(addedPrograms, pengirim);
@@ -1385,7 +1374,6 @@ class DataSheetOperations {
       return { success: false, message: error.message };
     }
   }
-
   async exportToJSON() {
     const allData = await this.getAllData();
     const userFilter = await this.getUserFilter();
@@ -1400,7 +1388,6 @@ class DataSheetOperations {
       },
     };
   }
-
   async getPaginatedData(page = 1, limit = 10) {
     const allData = await this.getAllData();
     const start = (page - 1) * limit;
@@ -1414,7 +1401,6 @@ class DataSheetOperations {
       limit,
     };
   }
-
   async getUserDataAccessInfo() {
     const userFilter = await this.getUserFilter();
     const allData = await this.getAllData();
@@ -1429,7 +1415,6 @@ class DataSheetOperations {
       })),
     };
   }
-
   async getStatistics() {
     const allData = await this.getAllData();
     const userFilter = await this.getUserFilter();
@@ -1485,7 +1470,6 @@ class DataSheetOperations {
       },
     };
   }
-
   validateData(data) {
     const errors = [];
     if (!data.programKerja || data.programKerja.trim() === "")
@@ -1503,6 +1487,5 @@ class DataSheetOperations {
     return { isValid: errors.length === 0, errors };
   }
 }
-
 const dataSheetOperations = new DataSheetOperations();
 export default dataSheetOperations;
