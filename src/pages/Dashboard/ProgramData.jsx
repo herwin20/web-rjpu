@@ -208,6 +208,7 @@ const ProgramData = ({ userRole }) => {
     "CNG",
     "CBM",
     "UMUM",
+    "MO",
   ];
   const kategoriOptions = ["Material", "Jasa", "Material & Jasa"];
   const tkdnOptions = ["Ya", "Tidak"];
@@ -2561,7 +2562,7 @@ const ProgramData = ({ userRole }) => {
 
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
-                      EST Levering
+                      EST Levering (Bulan)
                     </label>
                     <input
                       value={formData.estLevering || ""}
@@ -2721,18 +2722,32 @@ const ProgramData = ({ userRole }) => {
                         Harga Material (Rp){" "}
                         <span className="text-red-500">*</span>
                       </label>
+
                       <input
-                        type="number"
-                        value={formData.hargaMaterial || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            hargaMaterial: e.target.value,
-                          })
+                        type="text"
+                        inputMode="numeric"
+                        value={
+                          formData.hargaMaterial !== "" &&
+                          formData.hargaMaterial != null
+                            ? new Intl.NumberFormat("id-ID", {
+                                style: "currency",
+                                currency: "IDR",
+                                maximumFractionDigits: 0,
+                              }).format(formData.hargaMaterial)
+                            : ""
                         }
+                        onChange={(e) => {
+                          const rawValue = e.target.value.replace(/\D/g, "");
+
+                          setFormData((prev) => ({
+                            ...prev,
+                            hargaMaterial:
+                              rawValue === "" ? "" : Number(rawValue),
+                          }));
+                        }}
                         disabled={loadingSave}
                         className="w-full px-4 py-2.5 border border-blue-200 rounded-2xl focus:ring-2 focus:ring-blue-400 transition disabled:bg-gray-100 disabled:opacity-50"
-                        placeholder="0"
+                        placeholder="Rp 0"
                       />
                     </div>
                   )}
@@ -2743,18 +2758,31 @@ const ProgramData = ({ userRole }) => {
                       <label className="block text-sm font-semibold mb-1 text-purple-700">
                         Harga Jasa (Rp) <span className="text-red-500">*</span>
                       </label>
+
                       <input
-                        type="number"
-                        value={formData.hargaJasa || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            hargaJasa: e.target.value,
-                          })
+                        type="text"
+                        inputMode="numeric"
+                        value={
+                          formData.hargaJasa !== "" &&
+                          formData.hargaJasa != null
+                            ? new Intl.NumberFormat("id-ID", {
+                                style: "currency",
+                                currency: "IDR",
+                                maximumFractionDigits: 0,
+                              }).format(formData.hargaJasa)
+                            : ""
                         }
+                        onChange={(e) => {
+                          const rawValue = e.target.value.replace(/\D/g, "");
+
+                          setFormData((prev) => ({
+                            ...prev,
+                            hargaJasa: rawValue === "" ? "" : Number(rawValue),
+                          }));
+                        }}
                         disabled={loadingSave}
                         className="w-full px-4 py-2.5 border border-purple-200 rounded-2xl focus:ring-2 focus:ring-purple-400 transition disabled:bg-gray-100 disabled:opacity-50"
-                        placeholder="0"
+                        placeholder="Rp 0"
                       />
                     </div>
                   )}
