@@ -2286,7 +2286,7 @@ const ProgramData = ({ userRole }) => {
               animate="visible"
               exit="exit"
               className="bg-white rounded-[22px] max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-xl"
-              onClick={(e) => e.stopPropagation()}
+              //onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-gradient-to-r from-[#1e4f91] to-[#2563eb] px-6 py-4 flex justify-between items-center z-10">
                 <div className="flex items-center gap-3">
