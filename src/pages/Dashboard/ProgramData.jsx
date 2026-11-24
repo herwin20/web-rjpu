@@ -2278,7 +2278,7 @@ const ProgramData = ({ userRole }) => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={() => !loadingSave && setShowModal(false)}
+            //onClick={() => !loadingSave && setShowModal(false)}
           >
             <motion.div
               variants={modalVariants}
@@ -2286,7 +2286,7 @@ const ProgramData = ({ userRole }) => {
               animate="visible"
               exit="exit"
               className="bg-white rounded-[22px] max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-xl"
-              //onClick={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-gradient-to-r from-[#1e4f91] to-[#2563eb] px-6 py-4 flex justify-between items-center z-10">
                 <div className="flex items-center gap-3">
@@ -2302,8 +2302,13 @@ const ProgramData = ({ userRole }) => {
                   </h2>
                 </div>
                 <button
-                  onClick={() => !loadingSave && setShowModal(false)}
-                  disabled={loadingSave}
+                  type="button"
+                  onClick={() => {
+                    if (!loadingSave && !loadingUpload) {
+                      setShowModal(false);
+                    }
+                  }}
+                  disabled={loadingSave || loadingUpload}
                   className="p-1 hover:bg-white/20 rounded-lg transition text-white disabled:opacity-50"
                 >
                   <FiX size={20} />
