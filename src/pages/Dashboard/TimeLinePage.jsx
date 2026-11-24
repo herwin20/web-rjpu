@@ -152,107 +152,107 @@ const sumHarga = (list) =>
   list.reduce((sum, p) => sum + (parseFloat(p.hargaTotal) || 0), 0);
 
 // ==================== Komponen kecil ====================
-const ProgramCard = React.memo(({ program, compact, onClick }) => {
-  const style = getStatusStyle(program.keterangan);
-  const sched = program._sched;
-  return (
-    <button
-      type="button"
-      onClick={() => onClick(program)}
-      title={program.programKerja}
-      className="group relative w-full text-left rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden pl-4 pr-3 py-2.5"
-    >
-      <span className={`absolute left-0 top-0 bottom-0 w-1.5 ${style.bar}`} />
-      <div className="text-[10px] font-semibold text-slate-400 truncate">
-        {program.no}
-      </div>
-      <div className="text-[13px] font-semibold text-slate-900 leading-snug line-clamp-2 group-hover:text-sky-700">
-        {program.programKerja}
-      </div>
-      {!compact && (
-        <>
-          <div className="flex flex-wrap gap-1 mt-2">
-            <span
-              className={`inline-flex px-1.5 py-0.5 text-[10px] font-semibold rounded-md ${style.badge}`}
+const TimelineTable = ({
+  items,
+  year,
+  currentYear,
+  currentMonth,
+  compact,
+  onSelect,
+}) => (
+  <div className="overflow-x-auto rounded-xl border border-slate-200">
+    <table className="w-full min-w-[1050px] table-fixed border-separate border-spacing-0 text-xs">
+      <colgroup>
+        <col style={{ width: 290 }} />
+        {MONTHS.map((m) => (
+          <col key={m} />
+        ))}
+      </colgroup>
+      <thead>
+        <tr className="bg-slate-100 text-slate-500">
+          <th
+            rowSpan={2}
+            className="sticky left-0 z-20 bg-slate-100 px-4 text-left border-b border-r border-slate-200"
+          >
+            Program Kerja
+          </th>
+          {[1, 2, 3, 4].map((q) => (
+            <th
+              key={q}
+              colSpan={3}
+              className="py-2 border-b border-r border-slate-200 font-semibold"
             >
-              {program.keterangan || "Belum Ada Status"}
-            </span>
-            {program.bidang && (
-              <span className="inline-flex px-1.5 py-0.5 text-[10px] rounded-md bg-slate-100 text-slate-600">
-                {program.bidang}
-              </span>
-            )}
-            {program.kategori && (
-              <span
-                className={`inline-flex px-1.5 py-0.5 text-[10px] rounded-md ${
-                  KATEGORI_BADGE[program.kategori] ||
-                  "bg-gray-100 text-gray-600"
-                }`}
+              Q{q}
+            </th>
+          ))}
+        </tr>
+        <tr>
+          {MONTHS.map((m) => {
+            const current = year === currentYear && m === currentMonth;
+            return (
+              <th
+                key={m}
+                className={`py-2 border-b border-r border-slate-200 ${current ? "bg-sky-100 text-sky-700" : "bg-slate-50 text-slate-600"}`}
               >
-                {program.kategori}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center justify-between mt-2">
-            <span className="text-xs font-bold text-emerald-600">
-              {formatCurrencyShort(program.hargaTotal)}
-            </span>
-            {sched?.rolled && (
-              <span
-                className="text-[10px] font-medium text-amber-600"
-                title="Program tahun sebelumnya, levering melewati akhir tahun"
+                {BULAN_SINGKAT[m - 1]}
+                <span className="block text-[10px] font-normal">
+                  {items.filter((p) => p._sched.month === m).length}
+                </span>
+              </th>
+            );
+          })}
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((p, i) => (
+          <tr key={`${p.no}-${i}`} className="group">
+            <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 border-b border-r border-slate-200 px-3">
+              <button
+                type="button"
+                onClick={() => onSelect(p)}
+                title={p.programKerja}
+                className={`block w-full text-left ${compact ? "py-2" : "py-3"}`}
               >
-                dari {program.tahun}
-              </span>
-            )}
-          </div>
-        </>
-      )}
-    </button>
-  );
-});
-
-const MonthColumn = ({ month, items, isCurrent, compact, onSelect }) => (
-  <div
-    className={`rounded-2xl border p-2 min-h-[170px] ${
-      isCurrent
-        ? "border-sky-400 bg-sky-50/70 shadow-[0_0_0_3px_rgba(56,189,248,0.15)]"
-        : "border-slate-200/80 bg-slate-50/70"
-    }`}
-  >
-    <div className="mb-2 px-1">
-      <div className="flex items-center justify-between">
-        <span
-          className={`text-sm font-bold ${isCurrent ? "text-sky-700" : "text-slate-700"}`}
-        >
-          {BULAN_SINGKAT[month - 1]}
-          {isCurrent && (
-            <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-wide text-sky-600">
-              sekarang
-            </span>
-          )}
-        </span>
-        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
-          {items.length}
-        </span>
-      </div>
-      <div className="text-[11px] font-semibold text-emerald-600 mt-0.5">
-        {items.length ? formatCurrencyShort(sumHarga(items)) : "—"}
-      </div>
-    </div>
-    <div className="space-y-2">
-      {items.map((p) => (
-        <ProgramCard
-          key={p.no}
-          program={p}
-          compact={compact}
-          onClick={onSelect}
-        />
-      ))}
-    </div>
-    {items.length === 0 && (
-      <div className="text-center text-xs text-slate-300 py-8">Kosong</div>
-    )}
+                {!compact && (
+                  <span className="block truncate text-[10px] text-slate-400">
+                    {p.no}
+                  </span>
+                )}
+                <span className="block truncate font-medium text-slate-800 group-hover:text-sky-700">
+                  {p.programKerja}
+                </span>
+              </button>
+            </td>
+            {MONTHS.map((m) => {
+              const current = year === currentYear && m === currentMonth;
+              return (
+                <td
+                  key={m}
+                  className={`border-b border-r border-slate-100 text-center ${current ? "bg-sky-50" : i % 2 ? "bg-slate-50/60" : "bg-white"}`}
+                >
+                  {p._sched.month === m && (
+                    <button
+                      type="button"
+                      onClick={() => onSelect(p)}
+                      title={`${p.programKerja} — ${BULAN[m - 1]} ${year} — ${p.keterangan || "Belum Ada Status"}`}
+                      aria-label={`${p.programKerja}, ${BULAN[m - 1]} ${year}`}
+                      className={`mx-auto block h-4 w-4 rotate-45 rounded-[3px] ${getStatusStyle(p.keterangan).bar} hover:scale-125 transition-transform focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2`}
+                    />
+                  )}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+        {!items.length && (
+          <tr>
+            <td colSpan={13} className="py-8 text-center text-slate-400">
+              Tidak ada program terjadwal
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
   </div>
 );
 
@@ -264,9 +264,9 @@ const SkeletonTimeline = () => (
       ))}
     </div>
     <div className="h-16 bg-gray-200 rounded-[22px]" />
-    <div className="grid grid-cols-6 xl:grid-cols-12 gap-3">
+    <div className="space-y-2">
       {[...Array(12)].map((_, i) => (
-        <div key={i} className="h-56 bg-gray-200 rounded-2xl" />
+        <div key={i} className="h-8 bg-gray-200 rounded-lg" />
       ))}
     </div>
   </div>
@@ -290,7 +290,7 @@ const ProgramTimeline = () => {
   const [filterKluster, setFilterKluster] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
   const [selectedYear, setSelectedYear] = useState("all");
-  const [compact, setCompact] = useState(false);
+  const [compact, setCompact] = useState(true);
   const [selectedProgram, setSelectedProgram] = useState(null);
 
   const yearInitRef = useRef(false);
@@ -497,7 +497,8 @@ const ProgramTimeline = () => {
             Timeline Program
           </h1>
           <p className="text-slate-300 mt-1">
-            Jadwal estimasi levering program kerja per bulan dan per tahun
+            Jadwal target levering per bulan dan tahun • Klik penanda untuk
+            detail
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -507,7 +508,7 @@ const ProgramTimeline = () => {
           >
             {compact ? <FiMaximize2 size={16} /> : <FiMinimize2 size={16} />}
             <span className="hidden sm:inline">
-              {compact ? "Tampilan Lengkap" : "Tampilan Ringkas"}
+              {compact ? "Tampilkan Nomor" : "Sembunyikan Nomor"}
             </span>
           </button>
           <button
@@ -572,15 +573,15 @@ const ProgramTimeline = () => {
             whileHover={{ y: -4 }}
             className="relative bg-white rounded-[22px] border border-slate-200/80 shadow-[0_4px_24px_rgba(15,23,42,0.035)] overflow-hidden"
           >
-            <div className="p-5 md:p-6">
-              <div className="flex items-start justify-between mb-4">
+            <div className="p-3 md:p-4">
+              <div className="flex items-center justify-between mb-2">
                 <div
                   className={`p-3 rounded-2xl bg-gradient-to-br ${c.iconBg} shadow-lg`}
                 >
                   <c.icon className="text-white text-xl" />
                 </div>
                 <div
-                  className={`text-2xl md:text-3xl font-bold text-right ${c.valueColor}`}
+                  className={`text-xl md:text-2xl font-bold text-right ${c.valueColor}`}
                 >
                   {c.value}
                 </div>
@@ -675,7 +676,7 @@ const ProgramTimeline = () => {
 
         {/* Legenda status */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-4 text-xs text-slate-500">
-          <span className="font-semibold">Warna garis kiri:</span>
+          <span className="font-semibold">Warna penanda levering:</span>
           {Object.entries(STATUS_STYLE).map(([name, s]) => (
             <span key={name} className="inline-flex items-center gap-1.5">
               <span className={`w-2.5 h-2.5 rounded-full ${s.bar}`} />
@@ -706,7 +707,7 @@ const ProgramTimeline = () => {
           </div>
           <p className="text-slate-500">Belum ada data program</p>
         </div>
-      ) : visibleYears.length === 0 && visibleUnscheduled.length === 0 ? (
+      ) : stats.programCount === 0 ? (
         <div className="bg-white rounded-[22px] p-12 text-center">
           <p className="text-slate-500">
             Tidak ada program yang cocok dengan filter
@@ -751,32 +752,14 @@ const ProgramTimeline = () => {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto pb-2">
-                  <div className="min-w-[1500px]">
-                    <div className="grid grid-cols-12 gap-3 mb-2">
-                      {[1, 2, 3, 4].map((q) => (
-                        <div
-                          key={q}
-                          className="col-span-3 text-center text-[11px] font-bold tracking-wider text-slate-400 uppercase border-b-2 border-slate-200 pb-1"
-                        >
-                          Kuartal {q}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-12 gap-3">
-                      {MONTHS.map((m) => (
-                        <MonthColumn
-                          key={m}
-                          month={m}
-                          items={byYear[year]?.[m] || []}
-                          isCurrent={year === currentYear && m === currentMonth}
-                          compact={compact}
-                          onSelect={setSelectedProgram}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <TimelineTable
+                  items={yearItems}
+                  year={year}
+                  currentYear={currentYear}
+                  currentMonth={currentMonth}
+                  compact={compact}
+                  onSelect={setSelectedProgram}
+                />
               </motion.section>
             );
           })}
@@ -798,14 +781,25 @@ const ProgramTimeline = () => {
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-                {visibleUnscheduled.map((p) => (
-                  <ProgramCard
-                    key={p.no}
-                    program={p}
-                    compact={compact}
-                    onClick={setSelectedProgram}
-                  />
+              <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                {visibleUnscheduled.map((p, i) => (
+                  <button
+                    key={`${p.no}-${i}`}
+                    type="button"
+                    onClick={() => setSelectedProgram(p)}
+                    title={p.programKerja}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50"
+                  >
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${getStatusStyle(p.keterangan).bar}`}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">
+                      {p.programKerja}
+                    </span>
+                    <span className="shrink-0 text-xs text-slate-400">
+                      {p.tahun || "—"}
+                    </span>
+                  </button>
                 ))}
               </div>
             </section>
@@ -821,7 +815,6 @@ const ProgramTimeline = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={() => setSelectedProgram(null)}
           >
             <motion.div
               variants={modalVariants}

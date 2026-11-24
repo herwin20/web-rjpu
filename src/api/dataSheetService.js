@@ -1027,26 +1027,83 @@ class DataSheetOperations {
   }
 
   async addData(data) {
-    await this.init();
-    const userFilter = this.getUserFilter();
-    if (!userFilter.isAdmin) {
-      if (!data.bidang) data.bidang = userFilter.bidangFilter;
-      else if (data.bidang !== userFilter.bidangFilter)
-        return { success: false, message: `Access denied` };
-    }
-    const v = this.validateKategoriHarga(data);
-    if (!v.valid) return { success: false, message: v.message };
-
-    const kodeAwal = data.strategisRjpu || "";
-    if (!kodeAwal)
-      return { success: false, message: "Strategis RJPU wajib dipilih" };
-
     try {
+      await this.init();
+
+      // FIX: Tambahkan await
+      const userFilter = await this.getUserFilter();
+
+      // Validasi autentikasi
+      if (!loginService.checkAuth()) {
+        return {
+          success: false,
+          message: "Sesi login berakhir. Silakan login kembali.",
+        };
+      }
+
+      console.log("[addData] User Filter:", userFilter);
+      console.log("[addData] Bidang Input:", data.bidang);
+
+      // Validasi hak akses bidang
+      if (!userFilter.isAdmin) {
+        const allowedBidang = String(userFilter.bidangFilter || "").trim();
+
+        const inputBidang = String(data.bidang || "").trim();
+
+        if (!allowedBidang) {
+          return {
+            success: false,
+            message: "Bidang pengguna tidak ditemukan.",
+          };
+        }
+
+        if (!inputBidang) {
+          data.bidang = allowedBidang;
+        } else if (inputBidang.toLowerCase() !== allowedBidang.toLowerCase()) {
+          return {
+            success: false,
+            message: `Access denied. Anda hanya dapat menambahkan program bidang ${allowedBidang}.`,
+          };
+        } else {
+          data.bidang = allowedBidang;
+        }
+      }
+
+      // Validasi kategori dan harga
+      const v = this.validateKategoriHarga(data);
+
+      if (!v.valid) {
+        return {
+          success: false,
+          message: v.message,
+        };
+      }
+
+      // Validasi Strategis RJPU
+      const kodeAwal = data.strategisRjpu || "";
+
+      if (!kodeAwal) {
+        return {
+          success: false,
+          message: "Strategis RJPU wajib dipilih",
+        };
+      }
+
+      // Generate nomor program
       const rawData = await this.getProgramNumbersRaw();
+
       const nextSeq = this.getNextSequenceForKode(kodeAwal, rawData);
+
       const programId = this.generateProgramId(kodeAwal, nextSeq);
+
+      // Susun data sesuai mapping A:AA
       const newRow = this.buildRow(programId, data, v);
 
+      if (newRow.length !== COLUMN_NAMES.length) {
+        throw new Error("Jumlah kolom program tidak sesuai.");
+      }
+
+      // Simpan mulai dari kolom A
       const result = await this.appendRowsFromColumnA(
         SHEET_DATA,
         this.lastColumnLetter,
@@ -1054,20 +1111,33 @@ class DataSheetOperations {
         [newRow],
         rawData,
       );
+
+      if (result?.success === false) {
+        throw new Error(result.message || "Gagal menyimpan program.");
+      }
+
+      // Update cache
       this._applyAppend(rawData, [newRow]);
 
+      // Informasi pengguna
       const currentUser = loginService.getCurrentUser();
+
       const pengirim = currentUser ? currentUser.nama : "System";
+
       const bidangPengirim =
         data.bidang || userFilter.bidangFilter || "Unknown";
 
-      // Notifikasi tidak perlu ditunggu user (fire-and-forget; error ditangani di dalam)
-      this.addNotification(
-        programId,
-        data.programKerja,
-        pengirim,
-        bidangPengirim,
-      );
+      // Kirim notifikasi tanpa menunggu proses selesai
+      Promise.resolve(
+        this.addNotification(
+          programId,
+          data.programKerja,
+          pengirim,
+          bidangPengirim,
+        ),
+      ).catch((error) => {
+        console.error("Gagal mengirim notifikasi:", error);
+      });
 
       return {
         success: true,
@@ -1078,8 +1148,13 @@ class DataSheetOperations {
       };
     } catch (error) {
       this.invalidateAllDataCache();
+
       console.error("Error adding data:", error);
-      return { success: false, message: error.message };
+
+      return {
+        success: false,
+        message: error.message,
+      };
     }
   }
 
