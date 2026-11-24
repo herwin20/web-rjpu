@@ -24,7 +24,7 @@ import {
   FiMenu,
   FiRefreshCw,
   FiShield,
-  FiLock,
+  FiClock,
 } from "react-icons/fi";
 
 import ProgramData from "./ProgramData";
@@ -35,6 +35,7 @@ import MappingData from "./MappingDataPage";
 import DisbursementData from "./PerencanaanPage";
 import NotificationPanel from "../components/NotificationPanel";
 import RjpuAnggaran from "./AnggaranPage";
+import TimelinePage from "./TimeLinePage";
 import LogoAwal from "../../assets/logo_awal.png";
 
 import {
@@ -55,6 +56,7 @@ const ICONS = {
   home: FiHome,
   calendar: FiCalendar,
   database: FiDatabase,
+  clock: FiClock,
   archive: FiArchive,
   activity: FiActivity,
   users: FiUsers,
@@ -659,6 +661,12 @@ export default function Dashboard({ user, onLogout }) {
               path="/programs"
               element={
                 <ProgramData userRole={user?.role} viewType="programs" />
+              }
+            />
+            <Route
+              path="/timeline"
+              element={
+                <TimelinePage userRole={user?.role} viewType="timeline" />
               }
             />
             <Route

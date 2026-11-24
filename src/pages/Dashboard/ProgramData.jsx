@@ -227,6 +227,7 @@ const ProgramData = ({ userRole }) => {
     "CBM",
     "UMUM",
     "MO",
+    "IT",
   ];
   const kategoriOptions = ["Material", "Jasa", "Material & Jasa"];
   const tkdnOptions = ["Ya", "Tidak"];

@@ -32,6 +32,14 @@ export const MENU_ITEMS = [
     description: "Kelola program kerja",
   },
   {
+    id: "timeline",
+    label: "Timeline",
+    icon: "clock",
+    path: "/dashboard/timeline",
+    roles: ["Admin", "User"],
+    description: "Lihat timeline program",
+  },
+  {
     id: "anggaran-rjpu",
     label: "Anggaran RJPU",
     description: "Material, Jasa & AKI",
