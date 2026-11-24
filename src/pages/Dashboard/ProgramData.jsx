@@ -37,6 +37,24 @@ import strategiService from "../../api/strategiSheetService";
 import profilRiskService from "../../api/profileRiskService";
 import sheetsService from "../../api/googleSheetService"; // Tambahan untuk upload
 
+// ==================== Eskalasi Harga ====================
+const INFLASI_PER_TAHUN = 0.027; // 2,7% per tahun
+const TAHUN_REFERENSI_MULAI = 2020;
+
+const parseTahun = (v) => {
+  const n = parseInt(String(v ?? "").trim(), 10);
+  return Number.isFinite(n) ? n : null;
+};
+
+// Inflasi majemuk: (tahunProgram - tahunReferensi) kali
+const hitungFaktorInflasi = (tahunReferensi, tahunProgram) => {
+  const ref = parseTahun(tahunReferensi);
+  const target = parseTahun(tahunProgram);
+  if (!ref || !target || target <= ref) return { selisih: 0, faktor: 1 };
+  const selisih = target - ref;
+  return { selisih, faktor: Math.pow(1 + INFLASI_PER_TAHUN, selisih) };
+};
+
 // ==================== Skeletons ====================
 const SkeletonTableRow = () => (
   <tr className="border-t border-slate-100">
@@ -391,6 +409,7 @@ const ProgramData = ({ userRole }) => {
       descriptionAset: "",
       keterangan: "Belum Dimulai",
       aktivitasAo: "",
+      tahunReferensiHarga: "", // UI saja, tidak disimpan ke sheet
     });
     setShowModal(true);
   };
@@ -401,7 +420,11 @@ const ProgramData = ({ userRole }) => {
       return;
     }
     setEditingProgram(program);
-    setFormData({ ...program, profilRisk: program.profilRisk || "" });
+    setFormData({
+      ...program,
+      profilRisk: program.profilRisk || "",
+      tahunReferensiHarga: "", // harga tersimpan sudah final, jangan di-inflasi dua kali
+    });
     setShowModal(true);
   };
 
@@ -433,11 +456,46 @@ const ProgramData = ({ userRole }) => {
     });
   };
 
-  const computedHargaTotal = useMemo(() => {
+  // Perhitungan harga + eskalasi inflasi dari tahun referensi ke tahun program
+  const pricing = useMemo(() => {
     const hM = parseFloat(formData.hargaMaterial) || 0;
     const hJ = parseFloat(formData.hargaJasa) || 0;
-    return hM + hJ;
-  }, [formData.hargaMaterial, formData.hargaJasa]);
+    const ref = parseTahun(formData.tahunReferensiHarga);
+    const target = parseTahun(formData.tahun);
+    const { selisih, faktor } = hitungFaktorInflasi(
+      formData.tahunReferensiHarga,
+      formData.tahun,
+    );
+    // Hanya dibulatkan bila ada eskalasi, agar nilai lama tidak berubah saat edit
+    const adjM = faktor === 1 ? hM : Math.round(hM * faktor);
+    const adjJ = faktor === 1 ? hJ : Math.round(hJ * faktor);
+    return {
+      hM,
+      hJ,
+      ref,
+      selisih,
+      faktor,
+      adjM,
+      adjJ,
+      total: adjM + adjJ,
+      active: !!ref && selisih > 0,
+      invalidRef: !!ref && !!target && ref > target,
+    };
+  }, [
+    formData.hargaMaterial,
+    formData.hargaJasa,
+    formData.tahunReferensiHarga,
+    formData.tahun,
+  ]);
+
+  const computedHargaTotal = pricing.total;
+
+  const tahunReferensiOptions = useMemo(() => {
+    const end = parseTahun(formData.tahun) || new Date().getFullYear();
+    const years = [];
+    for (let y = end; y >= TAHUN_REFERENSI_MULAI; y--) years.push(String(y));
+    return years;
+  }, [formData.tahun]);
 
   const filteredAssets = useMemo(() => {
     if (!assetSearch.trim()) return assets;
@@ -575,10 +633,24 @@ const ProgramData = ({ userRole }) => {
       showToast("Harga Material & Jasa wajib diisi > 0", "error");
       return;
     }
+    if (pricing.invalidRef) {
+      showToast(
+        "Tahun harga referensi tidak boleh lebih besar dari tahun program",
+        "error",
+      );
+      return;
+    }
 
     setLoadingSave(true);
     try {
-      const payload = { ...formData, hargaTotal: hM + hJ };
+      // Yang disimpan ke sheet adalah harga setelah eskalasi inflasi
+      const { tahunReferensiHarga, ...rest } = formData;
+      const payload = {
+        ...rest,
+        hargaMaterial: pricing.adjM > 0 ? pricing.adjM : "",
+        hargaJasa: pricing.adjJ > 0 ? pricing.adjJ : "",
+        hargaTotal: pricing.total,
+      };
       if (editingProgram) {
         const result = await dataSheet.updateData(editingProgram.no, payload);
         if (result.success) {
@@ -2792,10 +2864,99 @@ const ProgramData = ({ userRole }) => {
                     </div>
                   )}
 
+                  {/* Tahun Harga Referensi + eskalasi inflasi */}
+                  <div className="md:col-span-2">
+                    <label
+                      htmlFor="tahun-referensi-harga"
+                      className="block text-sm font-semibold mb-1 text-slate-700"
+                    >
+                      Tahun Harga Referensi{" "}
+                      <span className="text-xs font-normal text-slate-400">
+                        (inflasi{" "}
+                        {(INFLASI_PER_TAHUN * 100).toFixed(1).replace(".", ",")}
+                        % per tahun)
+                      </span>
+                    </label>
+                    <select
+                      id="tahun-referensi-harga"
+                      value={formData.tahunReferensiHarga || ""}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          tahunReferensiHarga: e.target.value,
+                        }))
+                      }
+                      disabled={loadingSave}
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
+                    >
+                      <option value="">
+                        Tanpa eskalasi (harga sudah final)
+                      </option>
+                      {formData.tahunReferensiHarga &&
+                        !tahunReferensiOptions.includes(
+                          formData.tahunReferensiHarga,
+                        ) && (
+                          <option value={formData.tahunReferensiHarga}>
+                            {formData.tahunReferensiHarga}
+                          </option>
+                        )}
+                      {tahunReferensiOptions.map((y) => (
+                        <option key={y} value={y}>
+                          Harga tahun {y}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Harga Material dan Jasa di atas dianggap harga pada tahun
+                      referensi, lalu dinaikkan per tahun sampai tahun program (
+                      {formData.tahun || "-"}).
+                    </p>
+                    {pricing.invalidRef && (
+                      <p className="text-xs text-red-600 mt-1" role="alert">
+                        Tahun referensi tidak boleh lebih besar dari tahun
+                        program.
+                      </p>
+                    )}
+                    {editingProgram && pricing.active && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Mode edit: nilai harga di atas akan diperlakukan sebagai
+                        harga {pricing.ref} dan menggantikan harga tersimpan.
+                        Kosongkan pilihan ini jika hanya mengubah data lain.
+                      </p>
+                    )}
+                  </div>
+
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Harga Total (Otomatis)
                     </label>
+                    {pricing.active && (
+                      <div className="mb-2 rounded-2xl border border-sky-100 bg-sky-50 p-3 text-xs text-slate-600 space-y-1">
+                        <div className="font-semibold text-sky-700">
+                          Eskalasi {pricing.ref} → {formData.tahun} (
+                          {pricing.selisih} tahun, faktor{" "}
+                          {pricing.faktor.toFixed(4).replace(".", ",")})
+                        </div>
+                        {pricing.hM > 0 && (
+                          <div className="flex justify-between gap-3">
+                            <span>Material</span>
+                            <span>
+                              {formatCurrency(pricing.hM)} →{" "}
+                              <strong>{formatCurrency(pricing.adjM)}</strong>
+                            </span>
+                          </div>
+                        )}
+                        {pricing.hJ > 0 && (
+                          <div className="flex justify-between gap-3">
+                            <span>Jasa</span>
+                            <span>
+                              {formatCurrency(pricing.hJ)} →{" "}
+                              <strong>{formatCurrency(pricing.adjJ)}</strong>
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="w-full px-4 py-2.5 border border-emerald-200 bg-emerald-50 rounded-2xl text-emerald-800 font-bold">
                       {formatCurrency(computedHargaTotal)}
                     </div>
