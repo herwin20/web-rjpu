@@ -41,8 +41,8 @@ import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
 // ==================== Eskalasi Harga ====================
-const INFLASI_PER_TAHUN = 0.027; // 2,7% per tahun
-const TAHUN_REFERENSI_MULAI = 2020;
+const INFLASI_PER_TAHUN = 0.035; // 3,5% per tahun
+const TAHUN_REFERENSI_MULAI = 2015;
 
 const parseTahun = (v) => {
   const n = parseInt(String(v ?? "").trim(), 10);
