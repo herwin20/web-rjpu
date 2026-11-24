@@ -121,6 +121,7 @@ function AnggaranEditor({ program, existing, onClose, onSaved }) {
     try {
       const data = rjpuAnggaranService.calculateAKI(
         rows.filter(hasValue).map((r) => ({ ...r, no: program.no })),
+        program,
       );
       return {
         data,
@@ -130,11 +131,30 @@ function AnggaranEditor({ program, existing, onClose, onSaved }) {
     } catch (e) {
       return { data: [], byYear: new Map(), error: e.message };
     }
-  }, [rows, program.no]);
+  }, [rows, program]);
   const removed = [...initialYears].filter(
     (y) => !rows.some((r) => r.tahun === y && hasValue(r)),
   );
   const totals = sumRows(preview.data);
+  let budgetError = "";
+  try {
+    rjpuAnggaranService.validateBudget(preview.data, program);
+  } catch (e) {
+    budgetError = e.message;
+  }
+  const balances = useMemo(() => {
+    let material = rjpuAnggaranService.normalizeAmount(program.hargaMaterial);
+    let jasa = rjpuAnggaranService.normalizeAmount(program.hargaJasa);
+    return new Map(
+      rows.map((r) => {
+        const available = material + jasa;
+        const computed = preview.byYear.get(r.tahun);
+        material -= computed?.material ?? 0;
+        jasa -= computed?.jasa ?? 0;
+        return [r.tahun, { available, material, jasa, total: material + jasa }];
+      }),
+    );
+  }, [rows, preview, program]);
   const dirty =
     JSON.stringify(
       existing
@@ -147,7 +167,9 @@ function AnggaranEditor({ program, existing, onClose, onSaved }) {
           material,
           jasa,
         })),
-      ) || Boolean(preview.error);
+      ) ||
+    Boolean(preview.error) ||
+    existing.some((r) => r.aki !== r.material + r.jasa);
 
   function update(year, key, value) {
     setRows((prev) =>
@@ -178,7 +200,7 @@ function AnggaranEditor({ program, existing, onClose, onSaved }) {
   }
   async function save(e) {
     e.preventDefault();
-    if (busy.current || preview.error) return;
+    if (busy.current || preview.error || budgetError) return;
     if (
       removed.length &&
       !window.confirm(`Hapus anggaran tersimpan tahun ${removed.join(", ")}?`)
@@ -255,23 +277,51 @@ function AnggaranEditor({ program, existing, onClose, onSaved }) {
           ))}
         </div>
         <p className="text-xs leading-5 text-slate-500">
-          Harga di atas berasal dari sheet Data (hanya baca). Masukkan nilai
-          rupiah bulat tanpa pemisah ribuan. Dua sel kosong berarti tahun belum
-          diinput; masukkan 0 secara eksplisit jika anggaran memang nol. AKI
-          dihitung dari total tahun ini dikurangi total tahun berikutnya,
-          kecuali total tahun ini nol.
+          AKI = Material + Jasa tahun berjalan. Sisa pagu otomatis tersedia pada
+          tahun berikutnya. Dua sel kosong berarti belum diinput; nol berarti
+          tidak ada alokasi.
         </p>
-        {(error || preview.error) && <Notice>{error || preview.error}</Notice>}
+        {(error || preview.error || budgetError) && (
+          <Notice>{error || preview.error || budgetError}</Notice>
+        )}
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            ["Sisa material", program.hargaMaterial, totals.material],
+            ["Sisa jasa", program.hargaJasa, totals.jasa],
+            ["Sisa total", program.hargaTotal, totals.total],
+          ].map(([label, pagu, used]) => {
+            const remaining = rjpuAnggaranService.normalizeAmount(pagu) - used;
+            return (
+              <div
+                key={label}
+                className="rounded-xl border border-slate-200 p-3"
+              >
+                <p className="text-xs text-slate-500">{label}</p>
+                <p
+                  className={`font-bold ${remaining < 0 ? "text-rose-600" : "text-emerald-700"}`}
+                >
+                  {rupiah(remaining)}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Dialokasikan: {rupiah(used)}
+                </p>
+              </div>
+            );
+          })}
+        </div>
         <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full min-w-[760px] text-left text-sm">
+          <table className="w-full min-w-[1250px] text-left text-sm">
             <thead className="bg-[#101b34] text-xs font-semibold text-white">
               <tr>
                 {[
                   "Tahun",
                   "Material (Rp)",
                   "Jasa (Rp)",
-                  "Total (Rp)",
                   "AKI (Rp)",
+                  "Pagu tersedia",
+                  "Sisa Material",
+                  "Sisa Jasa",
+                  "Sisa Anggaran",
                   "Aksi",
                 ].map((h) => (
                   <th key={h} className="px-3 py-3">
@@ -299,26 +349,33 @@ function AnggaranEditor({ program, existing, onClose, onSaved }) {
                           aria-label={`${k} tahun ${r.tahun}`}
                           className={`${field} min-w-[135px] tabular-nums`}
                           inputMode="numeric"
-                          pattern="[0-9]*"
                           placeholder="Belum diinput"
-                          value={r[k]}
+                          value={r[k] === "" ? "" : nf.format(Number(r[k]))}
                           disabled={saving}
-                          onChange={(e) => update(r.tahun, k, e.target.value)}
+                          onChange={(e) =>
+                            update(
+                              r.tahun,
+                              k,
+                              e.target.value.replace(/\D/g, ""),
+                            )
+                          }
                         />
                       </td>
                     ))}
-                    <td className="whitespace-nowrap px-3 py-2 font-medium tabular-nums">
-                      {computed ? nf.format(computed.total) : "—"}
+                    <td className="whitespace-nowrap px-3 py-2 font-semibold text-emerald-700 tabular-nums">
+                      {computed ? nf.format(computed.aki) : "—"}
                     </td>
-                    <td
-                      className={`whitespace-nowrap px-3 py-2 font-semibold tabular-nums ${computed?.aki < 0 ? "text-rose-600" : computed?.aki == null ? "text-amber-700" : "text-emerald-700"}`}
-                    >
-                      {!computed
-                        ? "—"
-                        : computed.aki == null
-                          ? "Belum valid"
-                          : nf.format(computed.aki)}
-                    </td>
+                    {["available", "material", "jasa", "total"].map((k) => {
+                      const value = balances.get(r.tahun)?.[k];
+                      return (
+                        <td
+                          key={k}
+                          className={`whitespace-nowrap px-3 py-2 tabular-nums ${value < 0 ? "text-rose-600 font-semibold" : "text-slate-700"}`}
+                        >
+                          {preview.error ? "—" : nf.format(value)}
+                        </td>
+                      );
+                    })}
                     <td className="px-3 py-2">
                       <button
                         type="button"
@@ -364,8 +421,7 @@ function AnggaranEditor({ program, existing, onClose, onSaved }) {
             <FiPlus /> Tambah tahun
           </button>
           <span className="text-xs text-slate-500">
-            Tambahkan tahun berikutnya jika diperlukan untuk menghitung AKI
-            akhir.
+            Tambahkan tahun berikutnya untuk mengalokasikan sisa pagu.
           </span>
         </div>
         {removed.length > 0 && (
@@ -373,22 +429,10 @@ function AnggaranEditor({ program, existing, onClose, onSaved }) {
             Tahun {removed.join(", ")} akan dihapus saat disimpan.
           </p>
         )}
-        {totals.pending > 0 && (
-          <p className="rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-            {totals.pending} nilai AKI belum terhitung karena data tahun
-            berikutnya tidak tersedia. AKI tersebut akan disimpan kosong.
-          </p>
-        )}
-        {preview.data.some((r) => r.aki < 0) && (
-          <p className="rounded-xl bg-rose-50 p-3 text-xs text-rose-700">
-            AKI negatif dipertahankan sesuai rumus. Periksa kenaikan nilai pada
-            tahun berikutnya.
-          </p>
-        )}
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
           <div>
             <p className="text-xs text-slate-500">
-              Akumulasi AKI terhitung {totals.pending ? "(parsial)" : ""}
+              Total AKI yang dialokasikan
             </p>
             <p className="text-xl font-extrabold text-slate-900 tabular-nums">
               {preview.error ? "—" : rupiah(totals.aki)}
@@ -406,7 +450,12 @@ function AnggaranEditor({ program, existing, onClose, onSaved }) {
             <button
               type="submit"
               className={primary}
-              disabled={saving || Boolean(preview.error) || !dirty}
+              disabled={
+                saving ||
+                Boolean(preview.error) ||
+                Boolean(budgetError) ||
+                (!dirty && existing.length === 0)
+              }
             >
               {saving ? <FiRefreshCw className="animate-spin" /> : <FiSave />}
               {saving ? "Menyimpan..." : "Simpan anggaran"}
@@ -425,6 +474,7 @@ export default function RjpuAnggaranPage({ userRole }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
+  const [programChoice, setProgramChoice] = useState("");
   const [bidang, setBidang] = useState("");
   const [year, setYear] = useState("2027");
   const [status, setStatus] = useState("");
@@ -481,6 +531,16 @@ export default function RjpuAnggaranPage({ userRole }) {
     () => [...new Set(programs.map((p) => p.bidang).filter(Boolean))].sort(),
     [programs],
   );
+  const programOptions = useMemo(
+    () =>
+      programs
+        .filter((p) => !bidang || p.bidang === bidang)
+        .slice()
+        .sort((a, b) =>
+          String(a.no).localeCompare(String(b.no), "id", { numeric: true }),
+        ),
+    [programs, bidang],
+  );
   const yearOptions = useMemo(
     () =>
       [...new Set([...DEFAULT_YEARS, ...anggaran.map((a) => a.tahun)])].sort(
@@ -533,7 +593,9 @@ export default function RjpuAnggaranPage({ userRole }) {
     setMessage(`Anggaran ${no} berhasil disimpan ke Google Sheets.`);
   }
   function openEditor(no) {
+    if (loading || error || !programs.some((p) => p.no === no)) return;
     if (selected && selected !== no) return;
+    setProgramChoice(no);
     setMessage("");
     setSelected(no);
   }
@@ -605,7 +667,7 @@ export default function RjpuAnggaranPage({ userRole }) {
         />
         <Metric
           icon={FiActivity}
-          title="AKI Penetapan"
+          title="AKI Alokasi"
           value={rupiah(summary.aki)}
           detail={
             summary.pending
@@ -614,6 +676,53 @@ export default function RjpuAnggaranPage({ userRole }) {
           }
         />
       </div>
+      <section className={`${card} p-4 sm:p-5`}>
+        <label
+          htmlFor="program-choice"
+          className="block text-sm font-bold text-slate-800 mb-2"
+        >
+          Pilih Program Kerja
+        </label>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <select
+            id="program-choice"
+            className={`${field} min-w-0 flex-1`}
+            value={
+              programOptions.some((p) => p.no === programChoice)
+                ? programChoice
+                : ""
+            }
+            disabled={loading || Boolean(error) || Boolean(selected)}
+            onChange={(e) => setProgramChoice(e.target.value)}
+          >
+            <option value="">-- Pilih program dari sheet Data --</option>
+            {programOptions.map((p) => (
+              <option key={p.no} value={p.no}>
+                {p.no} — {p.programKerja} ({p.tahun || "—"}) ·{" "}
+                {p.bidang || "Tanpa bidang"}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className={primary}
+            disabled={
+              loading ||
+              Boolean(error) ||
+              Boolean(selected) ||
+              !programOptions.some((p) => p.no === programChoice)
+            }
+            onClick={() => openEditor(programChoice)}
+          >
+            <FiEdit2 />{" "}
+            {allByNo.has(programChoice) ? "Edit Anggaran" : "Input Anggaran"}
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          {programOptions.length} program tersedia sesuai hak akses dan filter
+          bidang. Pilih program tanpa perlu mengetik pencarian.
+        </p>
+      </section>
       {selectedProgram && (
         <div ref={editorRef} className="scroll-mt-24">
           <AnggaranEditor
@@ -834,7 +943,7 @@ export default function RjpuAnggaranPage({ userRole }) {
       <p className="text-[11px] leading-5 text-slate-400">
         Data program diambil dari sheet Data. Anggaran disimpan hanya pada
         Anggaran_RJPU. Rekap tahun terpilih tidak menjumlahkan saldo lintas
-        tahun. Nilai AKI mengikuti rumus service dan bukan konfirmasi
+        tahun. AKI = Material + Jasa tahun berjalan dan bukan konfirmasi
         persetujuan anggaran.
       </p>
     </div>

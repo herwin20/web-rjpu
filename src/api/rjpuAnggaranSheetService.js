@@ -196,21 +196,19 @@ class RjpuAnggaranService {
   // CALCULATE AKI
   // ============================================================
 
-  /**
-   * Rumus:
-   *
-   * Total = Material + Jasa
-   *
-   * AKI = 0 jika total tahun berjalan = 0
-   *
-   * Selain itu:
-   * AKI = Total tahun berjalan - Total tahun berikutnya
-   *
-   * Jika tahun berikutnya belum tersedia:
-   * AKI = null (belum tervalidasi)
-   */
+  // AKI = alokasi tahun berjalan; saldo diteruskan ke tahun berikutnya.
+  normalizeAmount(value) {
+    if (typeof value === "string") {
+      value = value
+        .trim()
+        .replace(/^Rp\s*/i, "")
+        .trim();
+      if (/^\d{1,3}(\.\d{3})+$/.test(value)) value = value.replace(/\./g, "");
+    }
+    return this.normalizeHarga(value);
+  }
 
-  calculateAKI(anggaran) {
+  calculateAKI(anggaran, program = null) {
     const sorted = anggaran
       .map((item) => ({
         ...item,
@@ -219,41 +217,59 @@ class RjpuAnggaranService {
         jasa: this.normalizeHarga(item.jasa, "Jasa"),
       }))
       .sort((a, b) => a.tahun - b.tahun);
-
-    const yearMap = new Map();
-
-    for (const item of sorted) {
-      if (yearMap.has(item.tahun)) {
-        throw new Error(`Tahun anggaran duplikat: ${item.tahun}`);
-      }
-
-      const total = item.material + item.jasa;
-
-      if (!Number.isSafeInteger(total)) {
-        throw new Error("Total anggaran terlalu besar");
-      }
-
-      yearMap.set(item.tahun, total);
-    }
-
+    const years = new Set();
+    let sisaMaterial = program
+      ? this.normalizeAmount(program.hargaMaterial)
+      : null;
+    let sisaJasa = program ? this.normalizeAmount(program.hargaJasa) : null;
     return sorted.map((item) => {
-      const total = yearMap.get(item.tahun);
-      const nextYear = item.tahun + 1;
-
-      let aki = null;
-
-      if (total === 0) {
-        aki = 0;
-      } else if (yearMap.has(nextYear)) {
-        aki = total - yearMap.get(nextYear);
+      if (years.has(item.tahun))
+        throw new Error(`Tahun anggaran duplikat: ${item.tahun}`);
+      years.add(item.tahun);
+      const total = item.material + item.jasa;
+      if (!Number.isSafeInteger(total))
+        throw new Error("Total anggaran terlalu besar");
+      const paguTersedia = program ? sisaMaterial + sisaJasa : null;
+      if (program) {
+        sisaMaterial -= item.material;
+        sisaJasa -= item.jasa;
       }
-
       return {
         ...item,
         total,
-        aki,
+        aki: total,
+        paguTersedia,
+        sisaMaterial,
+        sisaJasa,
+        sisaAnggaran: program ? sisaMaterial + sisaJasa : null,
       };
     });
+  }
+
+  validateBudget(rows, program) {
+    const material = rows.reduce(
+      (sum, r) => sum + this.normalizeHarga(r.material),
+      0,
+    );
+    const jasa = rows.reduce((sum, r) => sum + this.normalizeHarga(r.jasa), 0);
+    const pm = this.normalizeAmount(program.hargaMaterial);
+    const pj = this.normalizeAmount(program.hargaJasa);
+    const pt = this.normalizeAmount(program.hargaTotal);
+    if (![material, jasa, material + jasa, pm + pj].every(Number.isSafeInteger))
+      throw new Error("Total anggaran terlalu besar");
+    if (pm + pj !== pt)
+      throw new Error(
+        "Harga total pada sheet Data tidak sama dengan material + jasa.",
+      );
+    const fmt = (v) => new Intl.NumberFormat("id-ID").format(v);
+    const errors = [];
+    if (material > pm)
+      errors.push(`Material melebihi pagu Rp ${fmt(material - pm)}`);
+    if (jasa > pj) errors.push(`Jasa melebihi pagu Rp ${fmt(jasa - pj)}`);
+    if (material + jasa > pt)
+      errors.push(`Total melebihi pagu Rp ${fmt(material + jasa - pt)}`);
+    if (errors.length) throw new Error(errors.join(". "));
+    return true;
   }
 
   // ============================================================
@@ -295,6 +311,10 @@ class RjpuAnggaranService {
       jasa: item.jasa,
       total: item.total,
       aki: item.aki,
+      paguTersedia: item.paguTersedia,
+      sisaMaterial: item.sisaMaterial,
+      sisaJasa: item.sisaJasa,
+      sisaAnggaran: item.sisaAnggaran,
     };
   }
 
@@ -323,9 +343,12 @@ class RjpuAnggaranService {
 
     const result = [];
 
-    for (const items of grouped.values()) {
+    const programMap = new Map(programs.map((p) => [p.no, p]));
+    for (const [no, items] of grouped) {
       result.push(
-        ...this.calculateAKI(items).map((item) => this.toPublicData(item)),
+        ...this.calculateAKI(items, programMap.get(no)).map((item) =>
+          this.toPublicData(item),
+        ),
       );
     }
 
@@ -341,11 +364,13 @@ class RjpuAnggaranService {
 
     const programNo = this.normalizeNo(no);
 
-    await this.getAccessiblePrograms(programNo);
+    const [program] = await this.getAccessiblePrograms(programNo);
 
     const rows = await this.readAnggaranRows(new Set([programNo]));
 
-    return this.calculateAKI(rows).map((item) => this.toPublicData(item));
+    return this.calculateAKI(rows, program).map((item) =>
+      this.toPublicData(item),
+    );
   }
 
   // ============================================================
@@ -512,7 +537,7 @@ class RjpuAnggaranService {
 
       const programNo = this.normalizeNo(no);
 
-      await this.getAccessiblePrograms(programNo);
+      const [program] = await this.getAccessiblePrograms(programNo);
 
       const input = Array.isArray(data) ? data : [data];
 
@@ -559,7 +584,8 @@ class RjpuAnggaranService {
       }
 
       // Hitung ulang seluruh AKI pada program terkait
-      const calculated = this.calculateAKI([...merged.values()]);
+      const calculated = this.calculateAKI([...merged.values()], program);
+      this.validateBudget(calculated, program);
 
       await this.persistAnggaran(oldRows, calculated);
 
@@ -617,7 +643,7 @@ class RjpuAnggaranService {
 
       const programNo = this.normalizeNo(no);
 
-      await this.getAccessiblePrograms(programNo);
+      const [program] = await this.getAccessiblePrograms(programNo);
 
       const oldRows = await this.readAnggaranRows(new Set([programNo]));
 
@@ -632,7 +658,7 @@ class RjpuAnggaranService {
       }
 
       // AKI dihitung kembali setelah tahun dihapus
-      const calculated = this.calculateAKI(remaining);
+      const calculated = this.calculateAKI(remaining, program);
 
       await this.persistAnggaran(oldRows, calculated);
 
