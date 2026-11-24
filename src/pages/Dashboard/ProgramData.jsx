@@ -28,12 +28,14 @@ import {
   FiAlertTriangle,
   FiChevronUp,
   FiChevronDown,
+  FiUpload, // Tambahan untuk Upload
 } from "react-icons/fi";
 import { motion, AnimatePresence } from "framer-motion";
 import dataSheet from "../../api/dataSheetService";
 import assetService from "../../api/asetSheetService";
 import strategiService from "../../api/strategiSheetService";
 import profilRiskService from "../../api/profileRiskService";
+import sheetsService from "../../api/googleSheetService"; // Tambahan untuk upload
 
 // ==================== Skeletons ====================
 const SkeletonTableRow = () => (
@@ -134,6 +136,7 @@ const ProgramData = ({ userRole }) => {
   const [loadingBulkDelete, setLoadingBulkDelete] = useState(false);
   const [loadingSave, setLoadingSave] = useState(false);
   const [loadingExport, setLoadingExport] = useState(false);
+  const [loadingUpload, setLoadingUpload] = useState(false); // State Loading Upload
 
   // Master data
   const [assets, setAssets] = useState([]);
@@ -218,7 +221,7 @@ const ProgramData = ({ userRole }) => {
     "Drop",
   ];
 
-  // ==== TAMBAHAN: Opsi Aktivitas AO ====
+  // Opsi Aktivitas AO
   const aktivitasAoOptions = [
     "10 - Operasi",
     "17 - Kimia & Labor",
@@ -321,6 +324,42 @@ const ProgramData = ({ userRole }) => {
     );
   };
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Ambil judul program untuk nama sub-folder
+    const folderName = formData.programKerja
+      ? formData.programKerja
+      : "Program Tanpa Judul";
+
+    if (file.size > 15 * 1024 * 1024) {
+      showToast("Ukuran file maksimal 15MB", "error");
+      return;
+    }
+
+    setLoadingUpload(true);
+    try {
+      // Kirim file DAN nama program
+      const result = await sheetsService.uploadFileToDrive(file, folderName);
+
+      if (result.success) {
+        setFormData((prev) => ({ ...prev, file: result.link }));
+        showToast(
+          `File berhasil diunggah ke folder "${folderName}"`,
+          "success",
+        );
+      } else {
+        showToast(result.message, "error");
+      }
+    } catch (error) {
+      showToast("Gagal mengunggah file: " + error.message, "error");
+    } finally {
+      setLoadingUpload(false);
+      e.target.value = null; // Reset input file
+    }
+  };
+
   // Handlers
   const handleAdd = () => {
     setEditingProgram(null);
@@ -350,7 +389,7 @@ const ProgramData = ({ userRole }) => {
       aset: "",
       descriptionAset: "",
       keterangan: "Belum Dimulai",
-      aktivitasAo: "", // <-- TAMBAHAN state form default
+      aktivitasAo: "",
     });
     setShowModal(true);
   };
@@ -613,7 +652,7 @@ const ProgramData = ({ userRole }) => {
       "DESCRIPTION ASET",
       "KETERANGAN",
       "PROFIL RISK",
-      "AKTIVITAS AO", // Ditambahkan ke CSV
+      "AKTIVITAS AO",
     ];
     const fieldMap = {
       NO: "no",
@@ -941,7 +980,8 @@ const ProgramData = ({ userRole }) => {
         {(loadingSave ||
           loadingDelete ||
           loadingBulkDelete ||
-          loadingExport) && (
+          loadingExport ||
+          loadingUpload) && (
           <LoadingOverlay
             message={
               loadingSave
@@ -950,7 +990,9 @@ const ProgramData = ({ userRole }) => {
                   ? "Menghapus program..."
                   : loadingBulkDelete
                     ? "Menghapus program massal..."
-                    : "Mengekspor data..."
+                    : loadingExport
+                      ? "Mengekspor data..."
+                      : "Mengunggah file..."
             }
           />
         )}
@@ -2133,7 +2175,6 @@ const ProgramData = ({ userRole }) => {
                     </p>
                   </div>
 
-                  {/* TAMBAHAN: Tampilan Aktivitas AO di Modal Detail */}
                   {selectedProgram.sumberAnggaran === "AO" &&
                     selectedProgram.aktivitasAo && (
                       <div className="bg-indigo-50 rounded-2xl p-3 md:col-span-2">
@@ -2270,7 +2311,6 @@ const ProgramData = ({ userRole }) => {
 
               <div className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Program Kerja */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Program Kerja <span className="text-red-500">*</span>
@@ -2290,7 +2330,6 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
-                  {/* Alasan Program */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Alasan Program
@@ -2310,7 +2349,6 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
-                  {/* Profile Risk */}
                   <div className="md:col-span-2">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <label
@@ -2377,7 +2415,6 @@ const ProgramData = ({ userRole }) => {
                     )}
                   </div>
 
-                  {/* Kluster */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Kluster Program
@@ -2402,7 +2439,6 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
-                  {/* OEM */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       OEM / NON OEM
@@ -2424,7 +2460,6 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
-                  {/* Dasar Input */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Dasar Input Program
@@ -2449,7 +2484,6 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
-                  {/* Sasaran RJPP */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Sasaran RJPP
@@ -2474,7 +2508,6 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
-                  {/* Sumber Anggaran */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Sumber Anggaran
@@ -2500,7 +2533,6 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
-                  {/* TAMBAHAN: AKTIVITAS AO (Hanya muncul jika Sumber Anggaran = AO) */}
                   {formData.sumberAnggaran === "AO" && (
                     <div>
                       <label className="block text-sm font-semibold mb-1 text-indigo-700">
@@ -2527,10 +2559,9 @@ const ProgramData = ({ userRole }) => {
                     </div>
                   )}
 
-                  {/* EST Levering */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
-                      EST Levering (Number)
+                      EST Levering
                     </label>
                     <input
                       value={formData.estLevering || ""}
@@ -2547,7 +2578,6 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
-                  {/* Level Resiko Inherent */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Level Resiko Inherent
@@ -2572,7 +2602,6 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
-                  {/* Level Risiko Residual */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Level Risiko Residual
@@ -2597,10 +2626,9 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
-                  {/* SAT */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
-                      SAT (lot / unit / m2 / m3){" "}
+                      SAT
                     </label>
                     <input
                       type="text"
@@ -2614,10 +2642,9 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
-                  {/* VOL */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
-                      VOL (Number)
+                      VOL
                     </label>
                     <input
                       type="text"
@@ -2631,7 +2658,6 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
-                  {/* Tahun */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Tahun <span className="text-red-500">*</span>
@@ -2648,7 +2674,6 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
-                  {/* Bidang */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Bidang
@@ -2670,7 +2695,6 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
-                  {/* KATEGORI */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Kategori <span className="text-red-500">*</span>
@@ -2690,7 +2714,6 @@ const ProgramData = ({ userRole }) => {
                     </div>
                   </div>
 
-                  {/* HARGA MATERIAL */}
                   {(formData.kategori === "Material" ||
                     formData.kategori === "Material & Jasa") && (
                     <div>
@@ -2714,7 +2737,6 @@ const ProgramData = ({ userRole }) => {
                     </div>
                   )}
 
-                  {/* HARGA JASA */}
                   {(formData.kategori === "Jasa" ||
                     formData.kategori === "Material & Jasa") && (
                     <div>
@@ -2737,7 +2759,6 @@ const ProgramData = ({ userRole }) => {
                     </div>
                   )}
 
-                  {/* HARGA TOTAL */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Harga Total (Otomatis)
@@ -2747,7 +2768,6 @@ const ProgramData = ({ userRole }) => {
                     </div>
                   </div>
 
-                  {/* TKDN */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       TKDN
@@ -2769,7 +2789,6 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
-                  {/* STRATEGIS RJPU */}
                   <div>
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Strategis RJPU <span className="text-red-500">*</span>
@@ -2802,7 +2821,6 @@ const ProgramData = ({ userRole }) => {
                   </div>
 
                   {/* ASET (searchable) */}
-                  {/* ASET (searchable) */}
                   <div className="md:col-span-2 relative">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Aset{" "}
@@ -2810,7 +2828,6 @@ const ProgramData = ({ userRole }) => {
                         (bisa cari berdasarkan nama)
                       </span>
                     </label>
-
                     {formData.kategori === "Jasa" ? (
                       <input
                         type="text"
@@ -2832,25 +2849,21 @@ const ProgramData = ({ userRole }) => {
                             setShowAssetDropdown(true);
                           }}
                           onFocus={() => {
-                            setAssetSearch(""); // Reset pencarian saat diklik
+                            setAssetSearch("");
                             setShowAssetDropdown(true);
                           }}
-                          onBlur={() => {
-                            // Delay agar proses klik pada item dropdown sempat tereksekusi
-                            setTimeout(() => setShowAssetDropdown(false), 200);
-                          }}
+                          onBlur={() =>
+                            setTimeout(() => setShowAssetDropdown(false), 200)
+                          }
                           disabled={loadingSave || loadingAssets}
                           className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
                           placeholder="Ketik nama aset untuk mencari..."
                         />
-
                         {showAssetDropdown && (
                           <div
                             className="absolute z-[60] mt-1 w-full max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-xl"
-                            // MENCEGAH INPUT KEHILANGAN FOKUS SAAT DROPDOWN DIKLIK
                             onMouseDown={(e) => e.preventDefault()}
                           >
-                            {/* TOMBOL UNTUK MENGOSONGKAN ASET */}
                             <button
                               type="button"
                               onClick={() => {
@@ -2867,8 +2880,6 @@ const ProgramData = ({ userRole }) => {
                               <span>Kosongkan Pilihan Aset</span>
                               <FiX size={14} />
                             </button>
-
-                            {/* DAFTAR ASET */}
                             {filteredAssets.length === 0 ? (
                               <div className="px-4 py-3 text-sm text-slate-400 text-center">
                                 Tidak ditemukan aset
@@ -2902,7 +2913,6 @@ const ProgramData = ({ userRole }) => {
                     )}
                   </div>
 
-                  {/* DESCRIPTION ASET */}
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Deskripsi Aset
@@ -2917,24 +2927,73 @@ const ProgramData = ({ userRole }) => {
                     />
                   </div>
 
-                  {/* FILE */}
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold mb-1 text-slate-700">
+                  {/* FILE UPLOAD (AKTIF) */}
+                  <div className="md:col-span-2 bg-slate-50 p-4 border border-slate-200 rounded-2xl">
+                    <label className="block text-sm font-semibold mb-2 text-slate-700">
                       File Link (Google Drive)
                     </label>
-                    <input
-                      type="text"
-                      value={formData.file || ""}
-                      onChange={(e) =>
-                        setFormData({ ...formData, file: e.target.value })
-                      }
-                      disabled={loadingSave}
-                      className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
-                      placeholder="https://drive.google.com/..."
-                    />
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <input
+                        type="text"
+                        value={formData.file || ""}
+                        onChange={(e) =>
+                          setFormData({ ...formData, file: e.target.value })
+                        }
+                        disabled={loadingSave || loadingUpload}
+                        className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50 text-sm"
+                        placeholder="https://drive.google.com/..."
+                      />
+                      <div className="relative">
+                        <input
+                          type="file"
+                          id="file-upload"
+                          className="hidden"
+                          onChange={handleFileUpload}
+                          disabled={loadingUpload || loadingSave}
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.zip,.rar"
+                        />
+                        <label
+                          htmlFor="file-upload"
+                          className={`flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-medium text-white transition-all cursor-pointer whitespace-nowrap ${loadingUpload || loadingSave ? "bg-slate-400 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700 shadow-sm"}`}
+                        >
+                          {loadingUpload ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{" "}
+                              Mengunggah...
+                            </>
+                          ) : (
+                            <>
+                              <FiUpload size={16} /> Upload File
+                            </>
+                          )}
+                        </label>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-2">
+                      Mendukung format dokumen, gambar, excel, pdf, dll (Maks.
+                      15MB). File akan otomatis masuk ke folder sesuai nama
+                      Program Kerja.
+                    </p>
+                    {formData.file && (
+                      <div className="mt-3 flex items-center justify-between bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100">
+                        <div className="flex items-center gap-2 text-sm text-emerald-700 truncate">
+                          <FiFileText size={16} />
+                          <span className="truncate">File telah tersedia</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({ ...prev, file: "" }))
+                          }
+                          className="text-red-500 hover:text-red-700 p-1"
+                          title="Hapus File"
+                        >
+                          <FiX size={16} />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  {/* KETERANGAN: pilihan status, disimpan pada Data!Y */}
                   <div className="md:col-span-2">
                     <label
                       htmlFor="program-keterangan"
@@ -2979,14 +3038,14 @@ const ProgramData = ({ userRole }) => {
               <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-3">
                 <button
                   onClick={() => !loadingSave && setShowModal(false)}
-                  disabled={loadingSave}
+                  disabled={loadingSave || loadingUpload}
                   className="px-4 py-2 border border-slate-200 rounded-2xl hover:bg-slate-50 transition disabled:opacity-50"
                 >
                   Batal
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={loadingSave}
+                  disabled={loadingSave || loadingUpload}
                   className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#1e4f91] to-[#2563eb] text-white rounded-2xl hover:shadow-lg transition-all disabled:opacity-50"
                 >
                   {loadingSave ? (

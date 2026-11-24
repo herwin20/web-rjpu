@@ -1,5 +1,4 @@
 // api/googleSheetService.js
-
 import axios from "axios";
 
 class GoogleSheetsService {
@@ -10,12 +9,10 @@ class GoogleSheetsService {
     this._tokenPromise = null;
     this.isInitialized = false;
 
-    // Cache sederhana untuk getLatestInfo (opsional, mengurangi request baca)
     this._latestInfoCache = null;
     this._latestInfoCacheTime = 0;
-    this.LATEST_INFO_TTL = 30 * 1000; // 30 detik
+    this.LATEST_INFO_TTL = 30 * 1000;
 
-    // Service Account Credentials
     this.clientEmail =
       "web-rjpu-engineering@web-rjpu-2026.iam.gserviceaccount.com";
     this.privateKey = `-----BEGIN PRIVATE KEY-----
@@ -49,38 +46,27 @@ NSauxk8ngHOwuFlaHkF2jqo=
   }
 
   // ==================== TOKEN MANAGEMENT ====================
-
-  // Generate JWT token for authentication (dengan Promise cache)
   async getAccessToken() {
-    // Jika token masih valid, langsung kembalikan
     if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
       return this.accessToken;
     }
+    if (this._tokenPromise) return this._tokenPromise;
 
-    // Jika sedang ada permintaan token berjalan, tunggu Promise yang sama
-    if (this._tokenPromise) {
-      return this._tokenPromise;
-    }
-
-    // Buat Promise baru untuk mengambil token
     this._tokenPromise = this._fetchNewToken().finally(() => {
       this._tokenPromise = null;
     });
-
     return this._tokenPromise;
   }
 
   async _fetchNewToken() {
     try {
-      const header = {
-        alg: "RS256",
-        typ: "JWT",
-      };
-
+      const header = { alg: "RS256", typ: "JWT" };
       const now = Math.floor(Date.now() / 1000);
       const claim = {
         iss: this.clientEmail,
-        scope: "https://www.googleapis.com/auth/spreadsheets",
+        // Scope mencakup Sheets dan Drive
+        scope:
+          "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive",
         aud: "https://oauth2.googleapis.com/token",
         exp: now + 3600,
         iat: now,
@@ -103,9 +89,7 @@ NSauxk8ngHOwuFlaHkF2jqo=
       );
 
       this.accessToken = response.data.access_token;
-      // Simpan dengan margin 60 detik agar tidak expired di tengah request
       this.tokenExpiry = Date.now() + (response.data.expires_in - 60) * 1000;
-
       return this.accessToken;
     } catch (error) {
       console.error("Error getting access token:", error?.message || error);
@@ -122,14 +106,10 @@ NSauxk8ngHOwuFlaHkF2jqo=
       const privateKey = await this.importPrivateKey(privateKeyPem);
       const encoder = new TextEncoder();
       const signature = await crypto.subtle.sign(
-        {
-          name: "RSASSA-PKCS1-v1_5",
-          hash: { name: "SHA-256" },
-        },
+        { name: "RSASSA-PKCS1-v1_5", hash: { name: "SHA-256" } },
         privateKey,
         encoder.encode(input),
       );
-
       return this.base64UrlEncode(
         String.fromCharCode(...new Uint8Array(signature)),
       );
@@ -152,10 +132,7 @@ NSauxk8ngHOwuFlaHkF2jqo=
     return await crypto.subtle.importKey(
       "pkcs8",
       binaryDer,
-      {
-        name: "RSASSA-PKCS1-v1_5",
-        hash: { name: "SHA-256" },
-      },
+      { name: "RSASSA-PKCS1-v1_5", hash: { name: "SHA-256" } },
       false,
       ["sign"],
     );
@@ -163,24 +140,17 @@ NSauxk8ngHOwuFlaHkF2jqo=
 
   async init() {
     if (this.isInitialized) return true;
-
     try {
       await this.getAccessToken();
       this.isInitialized = true;
       console.log("✅ Google Sheets service initialized");
       return true;
     } catch (error) {
-      console.error("❌ Init error:", error?.message || error);
+      console.error("❌ Init error:", error);
       return false;
     }
   }
 
-  // ==================== REQUEST DENGAN RETRY 429 ====================
-
-  /**
-   * Request wrapper dengan exponential backoff + jitter.
-   * Retry hanya untuk 429 dan 5xx, maksimal `retries` kali.
-   */
   async request(method, url, data = null, retries = 5) {
     const token = await this.getAccessToken();
 
@@ -194,9 +164,7 @@ NSauxk8ngHOwuFlaHkF2jqo=
       timeout: 20000,
     };
 
-    if (data) {
-      config.data = data;
-    }
+    if (data) config.data = data;
 
     let lastError;
 
@@ -207,16 +175,12 @@ NSauxk8ngHOwuFlaHkF2jqo=
       } catch (error) {
         lastError = error;
         const status = error.response?.status;
-
-        // Hanya retry untuk 429 (rate limit) atau 5xx (server error)
         const shouldRetry = status === 429 || (status >= 500 && status < 600);
 
         if (!shouldRetry || attempt === retries - 1) {
           throw error;
         }
 
-        // Exponential backoff + jitter acak
-        // 1s, 2s, 4s, 8s, 16s ... maksimal 32s
         const backoffMs = Math.min(
           Math.pow(2, attempt) * 1000 + Math.random() * 1000,
           32000,
@@ -230,7 +194,6 @@ NSauxk8ngHOwuFlaHkF2jqo=
 
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
 
-        // Refresh token jika kemungkinan expired (401)
         if (status === 401) {
           this.accessToken = null;
           this.tokenExpiry = null;
@@ -238,13 +201,10 @@ NSauxk8ngHOwuFlaHkF2jqo=
         }
       }
     }
-
     throw lastError;
   }
 
   // ==================== DATA OPERATIONS ====================
-
-  // Get all data from sheet (returns array of arrays or objects)
   async getAllData(sheetTitle, range = "A:Z", returnAsObjects = true) {
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetTitle}!${range}`;
@@ -275,7 +235,6 @@ NSauxk8ngHOwuFlaHkF2jqo=
     }
   }
 
-  // Get raw data as array of arrays
   async getRawData(sheetTitle, range = "A:Z") {
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetTitle}!${range}`;
@@ -287,14 +246,10 @@ NSauxk8ngHOwuFlaHkF2jqo=
     }
   }
 
-  // Write data to a specific range
   async writeData(range, values) {
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`;
-
-      const data = await this.request("PUT", url, {
-        values: values,
-      });
+      const data = await this.request("PUT", url, { values: values });
 
       return {
         success: true,
@@ -306,26 +261,18 @@ NSauxk8ngHOwuFlaHkF2jqo=
       };
     } catch (error) {
       console.error("Error writing data:", error?.message || error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Update single cell (gunakan writeData untuk batch lebih efisien)
   async updateCell(range, value) {
     return this.writeData(range, [[value]]);
   }
 
-  // Append data to sheet
   async appendData(sheetTitle, values) {
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${sheetTitle}!A:Z:append?valueInputOption=USER_ENTERED`;
-
-      const data = await this.request("POST", url, {
-        values: values,
-      });
+      const data = await this.request("POST", url, { values: values });
 
       return {
         success: true,
@@ -334,38 +281,25 @@ NSauxk8ngHOwuFlaHkF2jqo=
       };
     } catch (error) {
       console.error("Error appending data:", error?.message || error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Clear a range
   async clearRange(range) {
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/${range}:clear`;
       await this.request("POST", url, {});
-
-      return {
-        success: true,
-        message: "Range cleared successfully",
-      };
+      return { success: true, message: "Range cleared successfully" };
     } catch (error) {
       console.error("Error clearing range:", error?.message || error);
-      return {
-        success: false,
-        message: error.message,
-      };
+      return { success: false, message: error.message };
     }
   }
 
-  // Check if sheet exists
   async sheetExists(sheetName) {
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}`;
       const data = await this.request("GET", url);
-
       const sheets = data.sheets || [];
       return sheets.some((sheet) => sheet.properties.title === sheetName);
     } catch (error) {
@@ -374,7 +308,6 @@ NSauxk8ngHOwuFlaHkF2jqo=
     }
   }
 
-  // Get row count (excluding header)
   async getRowCount(sheetTitle) {
     try {
       const data = await this.getRawData(sheetTitle, "A:A");
@@ -385,9 +318,6 @@ NSauxk8ngHOwuFlaHkF2jqo=
     }
   }
 
-  // ==================== INFORMASI ====================
-
-  // Get latest information from Informasi sheet (dengan cache 30 detik)
   async getLatestInfo(useCache = true) {
     const now = Date.now();
     if (
@@ -411,49 +341,135 @@ NSauxk8ngHOwuFlaHkF2jqo=
           pesan: rows[0][2]?.toString() || "Tidak ada pesan",
         };
       } else {
-        result = {
-          judul: "Informasi",
-          pesan: "Tidak ada informasi",
-        };
+        result = { judul: "Informasi", pesan: "Tidak ada informasi" };
       }
 
-      // Simpan cache
       this._latestInfoCache = result;
       this._latestInfoCacheTime = now;
-
       return result;
     } catch (error) {
       console.error("Error getting latest info:", error?.message || error);
-      return {
-        judul: "Error",
-        pesan: "Gagal memuat informasi",
-      };
+      return { judul: "Error", pesan: "Gagal memuat informasi" };
     }
   }
 
-  // Update latest information
   async updateLatestInfo(judul, pesan) {
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}/values/Informasi!B2:C2?valueInputOption=USER_ENTERED`;
+      await this.request("PUT", url, { values: [[judul, pesan]] });
 
-      await this.request("PUT", url, {
-        values: [[judul, pesan]],
-      });
-
-      // Invalidate cache agar pembacaan berikutnya fresh
       this._latestInfoCache = null;
       this._latestInfoCacheTime = 0;
-
-      return {
-        success: true,
-        message: "Info updated successfully",
-      };
+      return { success: true, message: "Info updated successfully" };
     } catch (error) {
       console.error("Error updating info:", error?.message || error);
-      return {
-        success: false,
-        message: error.message,
+      return { success: false, message: error.message };
+    }
+  }
+
+  // ==================== GOOGLE DRIVE UPLOAD ====================
+  async uploadFileToDrive(file, programName) {
+    // ID Folder Utama "RJPU Data Pendukung"
+    const PARENT_FOLDER_ID = "1SgWGTTqgz6coJhP_efRkP9p0eemQjZ-a";
+
+    try {
+      const token = await this.getAccessToken();
+
+      // Bersihkan nama program agar valid menjadi nama folder (hilangkan karakter aneh)
+      const safeFolderName =
+        String(programName || "Program Tanpa Judul")
+          .replace(/[^a-zA-Z0-9 ]/g, "")
+          .trim() || "Program Tanpa Judul";
+
+      let folderId = null;
+
+      // 1. Cek apakah sub-folder Program sudah ada di dalam PARENT_FOLDER_ID
+      const searchResponse = await axios.get(
+        `https://www.googleapis.com/drive/v3/files?q=name='${safeFolderName}' and '${PARENT_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+
+      if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+        // Sub-folder ditemukan
+        folderId = searchResponse.data.files[0].id;
+      } else {
+        // 2. Jika belum ada, buat sub-folder baru di dalam folder utama
+        const createFolderResponse = await axios.post(
+          "https://www.googleapis.com/drive/v3/files",
+          {
+            name: safeFolderName,
+            mimeType: "application/vnd.google-apps.folder",
+            parents: [PARENT_FOLDER_ID], // Masukkan ke folder utama
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          },
+        );
+        folderId = createFolderResponse.data.id;
+
+        // Beri akses anyone ke sub-folder program
+        await axios.post(
+          `https://www.googleapis.com/drive/v3/files/${folderId}/permissions`,
+          { role: "reader", type: "anyone" },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      }
+
+      // 3. Upload File ke dalam sub-folder
+      const metadata = {
+        name: file.name,
+        mimeType: file.type,
+        parents: [folderId],
       };
+
+      const formData = new FormData();
+      formData.append(
+        "metadata",
+        new Blob([JSON.stringify(metadata)], { type: "application/json" }),
+      );
+      formData.append("file", file);
+
+      const uploadResponse = await axios.post(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+        formData,
+        {
+          // Biarkan Axios mengatur header multipart boundary
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 120000,
+        },
+      );
+
+      const fileId = uploadResponse.data.id;
+
+      // 4. Beri akses anyone ke file
+      await axios.post(
+        `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
+        { role: "reader", type: "anyone" },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      const fileLink = `https://drive.google.com/file/d/${fileId}/view?usp=sharing`;
+      return { success: true, link: fileLink, folderId };
+    } catch (error) {
+      console.error("Error uploading to Drive:", error);
+      let msg = "Gagal mengunggah file ke Google Drive.";
+      if (error.response?.data?.error?.message) {
+        msg += ` Detail: ${error.response.data.error.message}`;
+      }
+      return { success: false, message: msg };
     }
   }
 }
