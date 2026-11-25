@@ -2,19 +2,16 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   FiPackage,
-  FiTruck,
   FiTool,
   FiCalendar,
   FiDollarSign,
   FiCheckCircle,
-  FiClock,
   FiAlertCircle,
   FiEdit2,
   FiSave,
   FiX,
   FiRefreshCw,
   FiSearch,
-  FiFilter,
   FiTrendingUp,
   FiPieChart,
   FiBarChart2,
@@ -22,6 +19,9 @@ import {
   FiChevronRight,
   FiInfo,
   FiPlusCircle,
+  FiUsers,
+  FiTrash2,
+  FiLock,
 } from "react-icons/fi";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -52,6 +52,13 @@ const Disbursement = ({ userRole }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedProgramsToCreate, setSelectedProgramsToCreate] = useState([]);
   const itemsPerPage = 10;
+
+  // --- state hapus ---
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const isAdmin = userRole === "Admin";
 
@@ -105,7 +112,7 @@ const Disbursement = ({ userRole }) => {
           else failCount++;
         } else if (existing) {
           successCount++;
-        } else if (!program.estLevering || parseInt(program.estLevering) <= 0) {
+        } else {
           failCount++;
         }
       }
@@ -129,47 +136,33 @@ const Disbursement = ({ userRole }) => {
     }
   };
 
-  // ================= PERBAIKAN HANDLE EDIT =================
   const handleEdit = (disbursement) => {
     setSelectedProgram(programs.find((p) => p.no === disbursement.programId));
 
-    // Inisialisasi state dengan aman. Jika kosong, pastikan string "" atau 0.
     setEditData({
       programId: disbursement.programId,
+      vendor: disbursement.materialVendor || disbursement.serviceVendor || "",
+      amount: parseNumberInput(
+        disbursement.materialAmount || disbursement.serviceAmount || 0,
+      ),
 
-      // Material
-      materialVendor: disbursement.materialVendor || "",
       materialPoDate: disbursement.materialPoDate || "",
       materialDeliveryPlan: disbursement.materialDeliveryPlan || "",
       materialActualDelivery: disbursement.materialActualDelivery || "",
-      materialAmount:
-        disbursement.materialAmount !== "" ? disbursement.materialAmount : "",
       materialStatus: disbursement.materialStatus || "Planned",
 
-      // Jasa
-      serviceVendor: disbursement.serviceVendor || "",
       servicePoDate: disbursement.servicePoDate || "",
       serviceStartPlan: disbursement.serviceStartPlan || "",
       serviceStartActual: disbursement.serviceStartActual || "",
       serviceEndPlan: disbursement.serviceEndPlan || "",
       serviceEndActual: disbursement.serviceEndActual || "",
-      serviceAmount:
-        disbursement.serviceAmount !== "" ? disbursement.serviceAmount : "",
       serviceStatus: disbursement.serviceStatus || "Planned",
 
-      // Equipment
-      equipmentVendor: disbursement.equipmentVendor || "",
-      equipmentLeveringPlan: disbursement.equipmentLeveringPlan || "",
-      equipmentLeveringActual: disbursement.equipmentLeveringActual || "",
-      equipmentStatus: disbursement.equipmentStatus || "Not Yet",
-
-      // Timeline
       executionStartPlan: disbursement.executionStartPlan || "",
       executionStartActual: disbursement.executionStartActual || "",
       executionEndPlan: disbursement.executionEndPlan || "",
       executionEndActual: disbursement.executionEndActual || "",
 
-      // Overall
       overallStatus: disbursement.overallStatus || "Not Started",
       progressPercentage: disbursement.progressPercentage || 0,
       notes: disbursement.notes || "",
@@ -177,36 +170,24 @@ const Disbursement = ({ userRole }) => {
     setShowModal(true);
   };
 
-  // ================= PERBAIKAN HANDLE SAVE =================
   const handleSave = async () => {
     try {
-      // Bersihkan data. Kita pastikan tidak ada satupun yang undefined.
       const payload = {
         programId: editData.programId,
+        vendor: editData.vendor || "",
+        amount: parseNumberInput(editData.amount),
 
-        materialVendor: editData.materialVendor || "",
         materialPoDate: editData.materialPoDate || "",
         materialDeliveryPlan: editData.materialDeliveryPlan || "",
         materialActualDelivery: editData.materialActualDelivery || "",
-        // Jika kosong, jadikan 0. Jika ada isinya, ubah ke Number.
-        materialAmount:
-          editData.materialAmount !== "" ? Number(editData.materialAmount) : 0,
         materialStatus: editData.materialStatus || "Planned",
 
-        serviceVendor: editData.serviceVendor || "",
         servicePoDate: editData.servicePoDate || "",
         serviceStartPlan: editData.serviceStartPlan || "",
         serviceStartActual: editData.serviceStartActual || "",
         serviceEndPlan: editData.serviceEndPlan || "",
         serviceEndActual: editData.serviceEndActual || "",
-        serviceAmount:
-          editData.serviceAmount !== "" ? Number(editData.serviceAmount) : 0,
         serviceStatus: editData.serviceStatus || "Planned",
-
-        equipmentVendor: editData.equipmentVendor || "",
-        equipmentLeveringPlan: editData.equipmentLeveringPlan || "",
-        equipmentLeveringActual: editData.equipmentLeveringActual || "",
-        equipmentStatus: editData.equipmentStatus || "Not Yet",
 
         executionStartPlan: editData.executionStartPlan || "",
         executionStartActual: editData.executionStartActual || "",
@@ -232,6 +213,50 @@ const Disbursement = ({ userRole }) => {
       }
     } catch (error) {
       showToast("Terjadi kesalahan: " + error.message, "error");
+    }
+  };
+
+  // ================== HAPUS ==================
+  const openDeleteModal = (disbursement) => {
+    setDeleteTarget(disbursement);
+    setDeletePassword("");
+    setDeleteError("");
+    setShowDeleteModal(true);
+  };
+
+  const expectedPassword = (d) => {
+    if (!d) return "";
+    const total =
+      (parseFloat(d.materialAmount) || 0) + (parseFloat(d.serviceAmount) || 0);
+    return String(Math.round(total));
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteError("");
+
+    if (deletePassword.trim() !== expectedPassword(deleteTarget)) {
+      setDeleteError("Password salah. Masukkan total harga tanpa titik/koma.");
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const result = await disbursementService.deleteDisbursement(
+        deleteTarget.programId,
+      );
+      if (result.success) {
+        await loadData();
+        setShowDeleteModal(false);
+        setDeleteTarget(null);
+        showToast("Disbursement berhasil dihapus", "success");
+      } else {
+        setDeleteError(result.message || "Gagal menghapus");
+      }
+    } catch (error) {
+      setDeleteError(error.message);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -282,12 +307,6 @@ const Disbursement = ({ userRole }) => {
     "Completed",
     "Delayed",
   ];
-  const equipmentStatusOptions = [
-    "Not Yet",
-    "On Progress",
-    "Arrived",
-    "Delayed",
-  ];
 
   const availableProgramsToCreate = useMemo(() => {
     const existingProgramIds = disbursements.map((d) => d.programId);
@@ -323,8 +342,6 @@ const Disbursement = ({ userRole }) => {
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
 
   const stats = useMemo(() => {
-    const safeReduce = (arr, key) =>
-      arr.reduce((sum, item) => sum + (parseFloat(item[key]) || 0), 0);
     return {
       total: disbursements.length,
       completed: disbursements.filter((d) => d.overallStatus === "Completed")
@@ -337,20 +354,46 @@ const Disbursement = ({ userRole }) => {
         disbursements.reduce((sum, d) => sum + d.progressPercentage, 0) /
           (disbursements.length || 1),
       ),
-      totalMaterial: safeReduce(disbursements, "materialAmount"),
-      totalService: safeReduce(disbursements, "serviceAmount"),
     };
   }, [disbursements]);
 
-  const formatCurrency = (amount) => {
+  // ================== FORMATTER ==================
+  const formatCurrency = (amount, compact = false) => {
     const num = parseFloat(amount);
     if (!num || isNaN(num)) return "Rp 0";
+
+    if (compact) {
+      if (num >= 1_000_000_000)
+        return `Rp ${(num / 1_000_000_000).toLocaleString("id-ID", {
+          maximumFractionDigits: 2,
+        })} M`;
+      if (num >= 1_000_000)
+        return `Rp ${(num / 1_000_000).toLocaleString("id-ID", {
+          maximumFractionDigits: 1,
+        })} Jt`;
+    }
+
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "IDR",
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(num);
+  };
+
+  // Format angka mentah -> string ribuan: 22500000000 -> "22.500.000.000"
+  const formatNumberInput = (value) => {
+    if (value === "" || value === null || value === undefined) return "";
+    const digits = String(value).replace(/\D/g, "");
+    if (!digits) return "";
+    return new Intl.NumberFormat("id-ID").format(Number(digits));
+  };
+
+  // Parse string berformat -> angka mentah: "22.500.000.000" -> 22500000000
+  const parseNumberInput = (value) => {
+    if (value === "" || value === null || value === undefined) return 0;
+    const digits = String(value).replace(/\D/g, "");
+    return digits ? Number(digits) : 0;
   };
 
   const statusChartData = [
@@ -487,11 +530,21 @@ const Disbursement = ({ userRole }) => {
               <FiDollarSign className="text-indigo-600 text-xl" />
             </div>
             <span className="text-xl font-bold text-indigo-600">
-              {formatCurrency(stats.totalMaterial + stats.totalService)}
+              {formatCurrency(
+                disbursements.reduce(
+                  (sum, d) =>
+                    sum +
+                    (parseFloat(d.materialAmount) ||
+                      parseFloat(d.serviceAmount) ||
+                      0),
+                  0,
+                ),
+                true,
+              )}
             </span>
           </div>
-          <h3 className="font-semibold">Total Nilai</h3>
-          <p className="text-xs text-slate-400">Material + Jasa</p>
+          <h3 className="font-semibold">Total Nilai Kontrak</h3>
+          <p className="text-xs text-slate-400">Vendor Terpilih</p>
         </motion.div>
       </div>
 
@@ -600,19 +653,13 @@ const Disbursement = ({ userRole }) => {
                   Program ID
                 </th>
                 <th className="px-4 py-4 text-left text-[11px] uppercase tracking-[0.08em] text-slate-500 font-bold">
-                  Program
-                </th>
-                <th className="px-4 py-4 text-center text-[11px] uppercase tracking-[0.08em] text-slate-500 font-bold">
-                  Est Levering
+                  Program & Vendor
                 </th>
                 <th className="px-4 py-4 text-center text-[11px] uppercase tracking-[0.08em] text-slate-500 font-bold">
                   Material
                 </th>
                 <th className="px-4 py-4 text-center text-[11px] uppercase tracking-[0.08em] text-slate-500 font-bold">
-                  Service/Jasa
-                </th>
-                <th className="px-4 py-4 text-center text-[11px] uppercase tracking-[0.08em] text-slate-500 font-bold">
-                  Equipment
+                  Jasa
                 </th>
                 <th className="px-4 py-4 text-center text-[11px] uppercase tracking-[0.08em] text-slate-500 font-bold">
                   Progress
@@ -628,23 +675,15 @@ const Disbursement = ({ userRole }) => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12">
+                  <td colSpan={7} className="text-center py-12">
                     <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
                   </td>
                 </tr>
               ) : paginatedData.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-slate-400">
+                  <td colSpan={7} className="text-center py-12 text-slate-400">
                     <FiPackage className="text-4xl mx-auto mb-2" />
                     <p>Belum ada data disbursement</p>
-                    {isAdmin && (
-                      <button
-                        onClick={() => setShowCreateModal(true)}
-                        className="mt-3 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm hover:bg-emerald-700"
-                      >
-                        Buat Disbursement Baru
-                      </button>
-                    )}
                   </td>
                 </tr>
               ) : (
@@ -658,12 +697,10 @@ const Disbursement = ({ userRole }) => {
                     </td>
                     <td className="px-3 py-3">
                       <div className="font-medium">{d.programName}</div>
-                      <div className="text-xs text-slate-400">{d.kluster}</div>
-                    </td>
-                    <td className="px-3 py-3 text-center">
-                      <span className="font-mono text-sm">
-                        {d.estLevering} bln
-                      </span>
+                      <div className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                        <FiUsers size={12} />{" "}
+                        {d.materialVendor || d.serviceVendor || "-"}
+                      </div>
                     </td>
                     <td className="px-3 py-3 text-center">
                       <span
@@ -682,11 +719,6 @@ const Disbursement = ({ userRole }) => {
                         }`}
                       >
                         {d.serviceStatus || "Planned"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3 text-center">
-                      <span className="inline-flex px-2 py-1 text-xs rounded-full bg-slate-100">
-                        {d.equipmentStatus || "Not Yet"}
                       </span>
                     </td>
                     <td className="px-3 py-3 text-center">
@@ -710,19 +742,30 @@ const Disbursement = ({ userRole }) => {
                       </span>
                     </td>
                     <td className="px-3 py-3 text-center">
-                      <button
-                        onClick={() => handleEdit(d)}
-                        className="p-2 text-sky-600 hover:bg-sky-50 rounded-xl"
-                        disabled={!isAdmin}
-                        title={
-                          !isAdmin ? "Hanya Admin yang dapat mengedit" : "Edit"
-                        }
-                      >
-                        <FiEdit2
-                          size={16}
-                          className={!isAdmin ? "opacity-50" : ""}
-                        />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => handleEdit(d)}
+                          className="p-2 text-sky-600 hover:bg-sky-50 rounded-xl"
+                          disabled={!isAdmin}
+                          title={!isAdmin ? "Hanya Admin" : "Edit"}
+                        >
+                          <FiEdit2
+                            size={16}
+                            className={!isAdmin ? "opacity-50" : ""}
+                          />
+                        </button>
+                        <button
+                          onClick={() => openDeleteModal(d)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-xl"
+                          disabled={!isAdmin}
+                          title={!isAdmin ? "Hanya Admin" : "Hapus"}
+                        >
+                          <FiTrash2
+                            size={16}
+                            className={!isAdmin ? "opacity-50" : ""}
+                          />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -857,9 +900,6 @@ const Disbursement = ({ userRole }) => {
                                 <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">
                                   Est Levering: {program.estLevering} bln
                                 </span>
-                                <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
-                                  {program.bidang}
-                                </span>
                               </div>
                             </div>
                           </div>
@@ -905,6 +945,7 @@ const Disbursement = ({ userRole }) => {
         </AnimatePresence>
       )}
 
+      {/* MODAL EDIT */}
       {isAdmin && (
         <AnimatePresence>
           {showModal && selectedProgram && (
@@ -921,13 +962,13 @@ const Disbursement = ({ userRole }) => {
                 className="bg-white rounded-[20px] max-w-5xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="sticky top-0 bg-[#101B34] hover:bg-[#1c335b] px-6 py-4 rounded-t-2xl flex justify-between items-center z-10">
+                <div className="sticky top-0 bg-[#101B34] px-6 py-4 rounded-t-2xl flex justify-between items-center z-10">
                   <div>
                     <h2 className="text-xl font-bold text-white">
-                      Edit Disbursement
+                      Detail Pelaksanaan
                     </h2>
                     <p className="text-sky-100 text-sm mt-0.5">
-                      Program: {selectedProgram.programKerja}
+                      {selectedProgram.programKerja} ({selectedProgram.no})
                     </p>
                   </div>
                   <button
@@ -937,32 +978,66 @@ const Disbursement = ({ userRole }) => {
                     <FiX size={20} />
                   </button>
                 </div>
+
                 <div className="p-6 space-y-6">
-                  <div className="bg-sky-50 rounded-xl p-4 border border-sky-200">
-                    <h3 className="font-bold text-lg flex items-center gap-2 text-sky-800 mb-4">
-                      <FiPackage /> 1. MATERIAL / PERALATAN
+                  {/* 1. INFORMASI VENDOR & KONTRAK */}
+                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                    <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 mb-4">
+                      <FiUsers /> 1. Informasi Vendor & Kontrak
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-sky-700 mb-1">
-                          🏭 Vendor Material
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Nama Vendor / Pemenang
                         </label>
                         <input
                           type="text"
-                          placeholder="Nama vendor (opsional)"
-                          value={editData.materialVendor || ""}
+                          placeholder="Masukkan nama vendor..."
+                          value={editData.vendor || ""}
                           onChange={(e) =>
-                            setEditData({
-                              ...editData,
-                              materialVendor: e.target.value,
-                            })
+                            setEditData({ ...editData, vendor: e.target.value })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-slate-300 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
                         />
                       </div>
                       <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Total Nilai Kontrak (Rp)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-medium pointer-events-none">
+                            Rp
+                          </span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value={formatNumberInput(editData.amount)}
+                            onChange={(e) =>
+                              setEditData({
+                                ...editData,
+                                amount: parseNumberInput(e.target.value),
+                              })
+                            }
+                            className="w-full pl-10 pr-3 py-2.5 border border-slate-300 bg-white rounded-xl focus:ring-2 focus:ring-sky-400 font-mono text-right"
+                          />
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          {formatCurrency(parseNumberInput(editData.amount))}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. MATERIAL / PERALATAN */}
+                  <div className="bg-sky-50 rounded-xl p-4 border border-sky-200">
+                    <h3 className="font-bold text-lg flex items-center gap-2 text-sky-800 mb-4">
+                      <FiPackage /> 2. Pengadaan Material / Peralatan
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div>
                         <label className="block text-xs font-semibold text-sky-700 mb-1">
-                          📅 Tanggal PO
+                          Tanggal PO Material
                         </label>
                         <input
                           type="date"
@@ -973,12 +1048,12 @@ const Disbursement = ({ userRole }) => {
                               materialPoDate: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
                         />
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-sky-700 mb-1">
-                          📦 Rencana Kirim
+                          Rencana Kedatangan
                         </label>
                         <input
                           type="date"
@@ -989,12 +1064,12 @@ const Disbursement = ({ userRole }) => {
                               materialDeliveryPlan: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-sky-700 mb-1">
-                          ✅ Realisasi Kirim
+                        <label className="block text-xs font-semibold text-emerald-700 mb-1">
+                          ✅ Realisasi Kedatangan
                         </label>
                         <input
                           type="date"
@@ -1005,29 +1080,12 @@ const Disbursement = ({ userRole }) => {
                               materialActualDelivery: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-emerald-200 bg-emerald-50 rounded-xl focus:ring-2 focus:ring-emerald-400 font-medium"
                         />
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-sky-700 mb-1">
-                          💰 Nilai (Rp)
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="0"
-                          value={editData.materialAmount || ""}
-                          onChange={(e) =>
-                            setEditData({
-                              ...editData,
-                              materialAmount: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-sky-700 mb-1">
-                          📊 Status
+                          Status Material
                         </label>
                         <select
                           value={editData.materialStatus || "Planned"}
@@ -1037,7 +1095,7 @@ const Disbursement = ({ userRole }) => {
                               materialStatus: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
                         >
                           {materialStatusOptions.map((s) => (
                             <option key={s}>{s}</option>
@@ -1046,31 +1104,16 @@ const Disbursement = ({ userRole }) => {
                       </div>
                     </div>
                   </div>
+
+                  {/* 3. JASA */}
                   <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
                     <h3 className="font-bold text-lg flex items-center gap-2 text-green-800 mb-4">
-                      <FiTool /> 2. SERVICE / JASA
+                      <FiTool /> 3. Pelaksanaan Jasa
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-emerald-700 mb-1">
-                          🏭 Vendor Jasa
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Nama vendor (opsional)"
-                          value={editData.serviceVendor || ""}
-                          onChange={(e) =>
-                            setEditData({
-                              ...editData,
-                              serviceVendor: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-emerald-700 mb-1">
-                          📅 Tanggal PO
+                          Tanggal PO Jasa
                         </label>
                         <input
                           type="date"
@@ -1081,7 +1124,7 @@ const Disbursement = ({ userRole }) => {
                               servicePoDate: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
                         />
                       </div>
                       <div>
@@ -1097,7 +1140,23 @@ const Disbursement = ({ userRole }) => {
                               serviceStartPlan: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-emerald-700 mb-1">
+                          Rencana Selesai
+                        </label>
+                        <input
+                          type="date"
+                          value={editData.serviceEndPlan || ""}
+                          onChange={(e) =>
+                            setEditData({
+                              ...editData,
+                              serviceEndPlan: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
                         />
                       </div>
                       <div>
@@ -1113,23 +1172,7 @@ const Disbursement = ({ userRole }) => {
                               serviceStartActual: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-emerald-700 mb-1">
-                          🎯 Rencana Selesai
-                        </label>
-                        <input
-                          type="date"
-                          value={editData.serviceEndPlan || ""}
-                          onChange={(e) =>
-                            setEditData({
-                              ...editData,
-                              serviceEndPlan: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-emerald-200 bg-emerald-50 rounded-xl focus:ring-2 focus:ring-emerald-400"
                         />
                       </div>
                       <div>
@@ -1145,125 +1188,35 @@ const Disbursement = ({ userRole }) => {
                               serviceEndActual: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-emerald-200 bg-emerald-50 rounded-xl focus:ring-2 focus:ring-emerald-400"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-emerald-700 mb-1">
-                          💰 Nilai (Rp)
-                        </label>
-                        <input
-                          type="number"
-                          placeholder="0"
-                          value={editData.serviceAmount || ""}
-                          onChange={(e) =>
-                            setEditData({
-                              ...editData,
-                              serviceAmount: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-emerald-700 mb-1">
-                          📊 Status
-                        </label>
-                        <select
-                          value={editData.serviceStatus || "Planned"}
-                          onChange={(e) =>
-                            setEditData({
-                              ...editData,
-                              serviceStatus: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
-                        >
-                          {materialStatusOptions.map((s) => (
-                            <option key={s}>{s}</option>
-                          ))}
-                        </select>
                       </div>
                     </div>
-                  </div>
-                  <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
-                    <h3 className="font-bold text-lg flex items-center gap-2 text-yellow-800 mb-4">
-                      <FiTruck /> 3. EQUIPMENT LEVERING
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-amber-700 mb-1">
-                          🏭 Vendor Peralatan
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Nama vendor (opsional)"
-                          value={editData.equipmentVendor || ""}
-                          onChange={(e) =>
-                            setEditData({
-                              ...editData,
-                              equipmentVendor: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-amber-700 mb-1">
-                          📅 Rencana Levering
-                        </label>
-                        <input
-                          type="date"
-                          value={editData.equipmentLeveringPlan || ""}
-                          onChange={(e) =>
-                            setEditData({
-                              ...editData,
-                              equipmentLeveringPlan: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-amber-700 mb-1">
-                          ✅ Realisasi Levering
-                        </label>
-                        <input
-                          type="date"
-                          value={editData.equipmentLeveringActual || ""}
-                          onChange={(e) =>
-                            setEditData({
-                              ...editData,
-                              equipmentLeveringActual: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-amber-700 mb-1">
-                          📊 Status
-                        </label>
-                        <select
-                          value={editData.equipmentStatus || "Not Yet"}
-                          onChange={(e) =>
-                            setEditData({
-                              ...editData,
-                              equipmentStatus: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
-                        >
-                          {equipmentStatusOptions.map((s) => (
-                            <option key={s}>{s}</option>
-                          ))}
-                        </select>
-                      </div>
+                    <div className="mt-4 w-1/3">
+                      <label className="block text-xs font-semibold text-emerald-700 mb-1">
+                        Status Jasa
+                      </label>
+                      <select
+                        value={editData.serviceStatus || "Planned"}
+                        onChange={(e) =>
+                          setEditData({
+                            ...editData,
+                            serviceStatus: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
+                      >
+                        {materialStatusOptions.map((s) => (
+                          <option key={s}>{s}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
+
+                  {/* 4. EKSEKUSI */}
                   <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-200">
                     <h3 className="font-bold text-lg flex items-center gap-2 text-indigo-800 mb-4">
-                      <FiCalendar /> 4. TIMELINE EKSEKUSI
+                      <FiCalendar /> 4. Eksekusi Akhir
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       <div>
@@ -1279,7 +1232,23 @@ const Disbursement = ({ userRole }) => {
                               executionStartPlan: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-indigo-700 mb-1">
+                          Rencana Selesai
+                        </label>
+                        <input
+                          type="date"
+                          value={editData.executionEndPlan || ""}
+                          onChange={(e) =>
+                            setEditData({
+                              ...editData,
+                              executionEndPlan: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
                         />
                       </div>
                       <div>
@@ -1295,23 +1264,7 @@ const Disbursement = ({ userRole }) => {
                               executionStartActual: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-indigo-700 mb-1">
-                          🎯 Rencana Selesai
-                        </label>
-                        <input
-                          type="date"
-                          value={editData.executionEndPlan || ""}
-                          onChange={(e) =>
-                            setEditData({
-                              ...editData,
-                              executionEndPlan: e.target.value,
-                            })
-                          }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-emerald-200 bg-emerald-50 rounded-xl focus:ring-2 focus:ring-emerald-400"
                         />
                       </div>
                       <div>
@@ -1327,19 +1280,21 @@ const Disbursement = ({ userRole }) => {
                               executionEndActual: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-emerald-200 bg-emerald-50 rounded-xl focus:ring-2 focus:ring-emerald-400"
                         />
                       </div>
                     </div>
                   </div>
+
+                  {/* 5. PROGRESS */}
                   <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
                     <h3 className="font-bold text-lg flex items-center gap-2 text-slate-900 mb-4">
-                      <FiCheckCircle /> 5. STATUS & PROGRESS
+                      <FiCheckCircle /> 5. Status Akhir & Progress
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 mb-1">
-                          📊 Status Keseluruhan
+                          Status Keseluruhan
                         </label>
                         <select
                           value={editData.overallStatus || "Not Started"}
@@ -1349,7 +1304,7 @@ const Disbursement = ({ userRole }) => {
                               overallStatus: e.target.value,
                             })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-slate-300 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
                         >
                           {statusOptions.map((s) => (
                             <option key={s}>{s}</option>
@@ -1358,7 +1313,7 @@ const Disbursement = ({ userRole }) => {
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 mb-1">
-                          📈 Progress (%)
+                          Progress Pekerjaan (%)
                         </label>
                         <div className="flex items-center gap-3">
                           <input
@@ -1375,48 +1330,147 @@ const Disbursement = ({ userRole }) => {
                             }
                             className="flex-1"
                           />
-                          <span className="text-lg font-bold text-sky-600">
+                          <span className="text-lg font-bold text-sky-600 w-12 text-right">
                             {editData.progressPercentage || 0}%
                           </span>
-                        </div>
-                        <div className="w-full bg-slate-200 rounded-full h-2 mt-2">
-                          <div
-                            className="bg-gradient-to-r from-sky-500 to-sky-600 h-2 rounded-full transition-all"
-                            style={{
-                              width: `${editData.progressPercentage || 0}%`,
-                            }}
-                          ></div>
                         </div>
                       </div>
                       <div className="md:col-span-2">
                         <label className="block text-xs font-semibold text-slate-700 mb-1">
-                          📝 Catatan
+                          Catatan Tambahan
                         </label>
                         <textarea
                           rows="2"
-                          placeholder="Tambahkan catatan..."
+                          placeholder="Keterangan kendala, info penting, dll..."
                           value={editData.notes || ""}
                           onChange={(e) =>
                             setEditData({ ...editData, notes: e.target.value })
                           }
-                          className="w-full px-3 py-2.5 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-400/30 focus:border-sky-400"
+                          className="w-full px-3 py-2.5 border border-slate-300 bg-white rounded-xl focus:ring-2 focus:ring-sky-400"
                         />
                       </div>
                     </div>
                   </div>
                 </div>
+
                 <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-3 rounded-b-2xl z-10">
                   <button
                     onClick={() => setShowModal(false)}
-                    className="px-4 py-2 border rounded-xl"
+                    className="px-4 py-2 border rounded-xl hover:bg-slate-50"
                   >
                     Batal
                   </button>
                   <button
                     onClick={handleSave}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-[#101B34] hover:bg-[#1c335b] text-white rounded-xl"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-[#101B34] hover:bg-[#1c335b] text-white rounded-xl shadow-lg"
                   >
-                    <FiSave /> Simpan
+                    <FiSave /> Simpan Perubahan
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
+
+      {/* MODAL HAPUS */}
+      {isAdmin && (
+        <AnimatePresence>
+          {showDeleteModal && deleteTarget && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-[3px] flex items-center justify-center z-50 p-4"
+              onClick={() => setShowDeleteModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                className="bg-white rounded-[20px] max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="bg-red-600 px-6 py-4 flex justify-between items-center">
+                  <div className="flex items-center gap-2 text-white">
+                    <FiTrash2 size={20} />
+                    <h2 className="text-lg font-bold">Hapus Disbursement</h2>
+                  </div>
+                  <button
+                    onClick={() => setShowDeleteModal(false)}
+                    className="text-white hover:bg-white/20 p-2 rounded-xl"
+                  >
+                    <FiX size={18} />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-800">
+                    <p className="font-semibold mb-1">⚠️ Peringatan</p>
+                    <p>
+                      Data disbursement untuk program{" "}
+                      <strong>{deleteTarget.programName}</strong> (
+                      {deleteTarget.programId}) akan dihapus permanen.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                      <FiLock size={12} /> Konfirmasi Password (Total Harga)
+                    </label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      placeholder="Contoh: 22500000000"
+                      value={deletePassword}
+                      onChange={(e) => setDeletePassword(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-400 font-mono"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Masukkan total harga tanpa titik/koma.{" "}
+                      <span className="text-slate-400">
+                        (Nilai:{" "}
+                        {formatCurrency(
+                          (parseFloat(deleteTarget.materialAmount) || 0) +
+                            (parseFloat(deleteTarget.serviceAmount) || 0),
+                        )}
+                        )
+                      </span>
+                    </p>
+                  </div>
+
+                  {deleteError && (
+                    <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl p-2">
+                      <FiAlertCircle size={16} /> {deleteError}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-slate-50 border-t px-6 py-4 flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowDeleteModal(false)}
+                    className="px-4 py-2 border rounded-xl hover:bg-slate-100"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting || !deletePassword.trim()}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-white transition-all ${
+                      deleting || !deletePassword.trim()
+                        ? "bg-gray-300 cursor-not-allowed"
+                        : "bg-red-600 hover:bg-red-700 shadow-lg"
+                    }`}
+                  >
+                    {deleting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Menghapus...
+                      </>
+                    ) : (
+                      <>
+                        <FiTrash2 size={16} /> Hapus Permanen
+                      </>
+                    )}
                   </button>
                 </div>
               </motion.div>
