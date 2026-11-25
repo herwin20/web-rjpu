@@ -64,7 +64,6 @@ NSauxk8ngHOwuFlaHkF2jqo=
       const now = Math.floor(Date.now() / 1000);
       const claim = {
         iss: this.clientEmail,
-        // Scope mencakup Sheets dan Drive
         scope:
           "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive",
         aud: "https://oauth2.googleapis.com/token",
@@ -367,109 +366,161 @@ NSauxk8ngHOwuFlaHkF2jqo=
     }
   }
 
+  // ==================== DELETE ROW ====================
+  async deleteRow(sheetName, rowNumber) {
+    try {
+      // Ambil metadata sheet untuk mendapatkan sheetId
+      const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}?fields=sheets(properties(sheetId,title))`;
+      const meta = await this.request("GET", metaUrl);
+      const sheet = (meta.sheets || []).find(
+        (s) => s.properties.title === sheetName,
+      );
+      if (!sheet) throw new Error(`Sheet ${sheetName} tidak ditemukan`);
+
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${this.spreadsheetId}:batchUpdate`;
+      await this.request("POST", url, {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: sheet.properties.sheetId,
+                dimension: "ROWS",
+                startIndex: rowNumber - 1, // 0-based
+                endIndex: rowNumber,
+              },
+            },
+          },
+        ],
+      });
+
+      return { success: true, message: "Row deleted successfully" };
+    } catch (error) {
+      console.error("Error deleteRow:", error?.message || error);
+      return { success: false, message: error.message };
+    }
+  }
+
   // ==================== GOOGLE DRIVE UPLOAD ====================
+  // ==================== GOOGLE DRIVE UPLOAD ====================
+
   async uploadFileToDrive(file, programName) {
-    // ID Folder Utama "RJPU Data Pendukung"
-    const PARENT_FOLDER_ID = "1SgWGTTqgz6coJhP_efRkP9p0eemQjZ-a";
+    const GAS_URL = import.meta.env.VITE_GAS_UPLOAD_URL;
+    const MAX_SIZE = 15 * 1024 * 1024;
+
+    let timeoutId;
 
     try {
-      const token = await this.getAccessToken();
+      if (!GAS_URL || !GAS_URL.endsWith("/exec")) {
+        throw new Error("URL Google Apps Script belum dikonfigurasi");
+      }
 
-      // Bersihkan nama program agar valid menjadi nama folder (hilangkan karakter aneh)
-      const safeFolderName =
-        String(programName || "Program Tanpa Judul")
-          .replace(/[^a-zA-Z0-9 ]/g, "")
-          .trim() || "Program Tanpa Judul";
+      if (!file) {
+        throw new Error("File belum dipilih");
+      }
 
-      let folderId = null;
+      if (file.size === 0) {
+        throw new Error("File kosong");
+      }
 
-      // 1. Cek apakah sub-folder Program sudah ada di dalam PARENT_FOLDER_ID
-      const searchResponse = await axios.get(
-        `https://www.googleapis.com/drive/v3/files?q=name='${safeFolderName}' and '${PARENT_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      if (file.size > MAX_SIZE) {
+        throw new Error("Ukuran file maksimal 15 MB");
+      }
 
-      if (searchResponse.data.files && searchResponse.data.files.length > 0) {
-        // Sub-folder ditemukan
-        folderId = searchResponse.data.files[0].id;
-      } else {
-        // 2. Jika belum ada, buat sub-folder baru di dalam folder utama
-        const createFolderResponse = await axios.post(
-          "https://www.googleapis.com/drive/v3/files",
-          {
-            name: safeFolderName,
-            mimeType: "application/vnd.google-apps.folder",
-            parents: [PARENT_FOLDER_ID], // Masukkan ke folder utama
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          },
-        );
-        folderId = createFolderResponse.data.id;
+      if (!programName?.trim()) {
+        throw new Error("Nama program kerja wajib diisi");
+      }
 
-        // Beri akses anyone ke sub-folder program
-        await axios.post(
-          `https://www.googleapis.com/drive/v3/files/${folderId}/permissions`,
-          { role: "reader", type: "anyone" },
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          },
+      // Convert file to Base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => {
+          const result = String(reader.result);
+          resolve(result.split(",")[1]);
+        };
+
+        reader.onerror = () => {
+          reject(new Error("Gagal membaca file"));
+        };
+
+        reader.readAsDataURL(file);
+      });
+
+      // Timeout 120 detik
+      const controller = new AbortController();
+
+      timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 120000);
+
+      const response = await fetch(GAS_URL, {
+        method: "POST",
+        mode: "cors",
+        redirect: "follow",
+        credentials: "omit",
+
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+
+        body: JSON.stringify({
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          base64,
+          programName: programName.trim(),
+        }),
+
+        signal: controller.signal,
+      });
+
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        throw new Error(`HTTP Error ${response.status}`);
+      }
+
+      let result;
+
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        console.error("Invalid GAS response:", responseText);
+
+        throw new Error(
+          "Respons Apps Script bukan JSON. Periksa deployment dan izin akses.",
         );
       }
 
-      // 3. Upload File ke dalam sub-folder
-      const metadata = {
-        name: file.name,
-        mimeType: file.type,
-        parents: [folderId],
+      if (!result.success) {
+        throw new Error(result.message || "Upload gagal");
+      }
+
+      if (!result.link) {
+        throw new Error("Link file tidak ditemukan");
+      }
+
+      return {
+        success: true,
+        link: result.link,
+        name: result.name,
+        fileId: result.fileId,
+        folderId: result.folderId,
+        folder: result.folder,
+        folderLink: result.folderLink,
+        size: result.size,
       };
-
-      const formData = new FormData();
-      formData.append(
-        "metadata",
-        new Blob([JSON.stringify(metadata)], { type: "application/json" }),
-      );
-      formData.append("file", file);
-
-      const uploadResponse = await axios.post(
-        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-        formData,
-        {
-          // Biarkan Axios mengatur header multipart boundary
-          headers: { Authorization: `Bearer ${token}` },
-          timeout: 120000,
-        },
-      );
-
-      const fileId = uploadResponse.data.id;
-
-      // 4. Beri akses anyone ke file
-      await axios.post(
-        `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
-        { role: "reader", type: "anyone" },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        },
-      );
-
-      const fileLink = `https://drive.google.com/file/d/${fileId}/view?usp=sharing`;
-      return { success: true, link: fileLink, folderId };
     } catch (error) {
-      console.error("Error uploading to Drive:", error);
-      let msg = "Gagal mengunggah file ke Google Drive.";
-      if (error.response?.data?.error?.message) {
-        msg += ` Detail: ${error.response.data.error.message}`;
-      }
-      return { success: false, message: msg };
+      console.error("Google Drive upload error:", error);
+
+      return {
+        success: false,
+        message:
+          error.name === "AbortError"
+            ? "Waktu upload habis. Periksa Drive sebelum mencoba kembali."
+            : error.message,
+      };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 }

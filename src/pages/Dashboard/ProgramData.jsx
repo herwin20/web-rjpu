@@ -35,7 +35,7 @@ import dataSheet from "../../api/dataSheetService";
 import assetService from "../../api/asetSheetService";
 import strategiService from "../../api/strategiSheetService";
 import profilRiskService from "../../api/profileRiskService";
-import sheetsService from "../../api/googleSheetService"; // Tambahan untuk upload
+import sheetsService from "../../api/driveUploadService";
 
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
@@ -348,38 +348,30 @@ const ProgramData = ({ userRole }) => {
   };
 
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
-
-    // Ambil judul program untuk nama sub-folder
-    const folderName = formData.programKerja
-      ? formData.programKerja
-      : "Program Tanpa Judul";
-
-    if (file.size > 15 * 1024 * 1024) {
-      showToast("Ukuran file maksimal 15MB", "error");
+    if (!canEdit || loadingUpload || loadingSave) {
+      input.value = "";
       return;
     }
-
+    const programName = String(formData.programKerja || "").trim();
+    if (!programName) {
+      showToast("Isi nama program kerja terlebih dahulu", "error");
+      input.value = "";
+      return;
+    }
     setLoadingUpload(true);
     try {
-      // Kirim file DAN nama program
-      const result = await sheetsService.uploadFileToDrive(file, folderName);
-
-      if (result.success) {
-        setFormData((prev) => ({ ...prev, file: result.link }));
-        showToast(
-          `File berhasil diunggah ke folder "${folderName}"`,
-          "success",
-        );
-      } else {
-        showToast(result.message, "error");
-      }
+      const result = await sheetsService.uploadFileToDrive(file, programName);
+      if (!result.success) throw new Error(result.message);
+      setFormData((prev) => ({ ...prev, file: result.link }));
+      showToast(`File berhasil diunggah: ${result.name}`, "success");
     } catch (error) {
-      showToast("Gagal mengunggah file: " + error.message, "error");
+      showToast("Gagal mengunggah: " + error.message, "error");
     } finally {
       setLoadingUpload(false);
-      e.target.value = null; // Reset input file
+      input.value = "";
     }
   };
 
@@ -598,6 +590,10 @@ const ProgramData = ({ userRole }) => {
   };
 
   const handleSave = async () => {
+    if (loadingUpload) {
+      showToast("File masih dalam proses upload", "error");
+      return;
+    }
     if (editingProgram && !canEdit) {
       showToast("Anda tidak memiliki izin mengedit program", "error");
       return;
@@ -3234,7 +3230,7 @@ const ProgramData = ({ userRole }) => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            //onClick={() => !loadingSave && setShowModal(false)}
+            //onClick={() => !loadingSave && !loadingUpload && setShowModal(false)}
           >
             <motion.div
               variants={modalVariants}
@@ -4027,7 +4023,7 @@ const ProgramData = ({ userRole }) => {
                           id="file-upload"
                           className="hidden"
                           onChange={handleFileUpload}
-                          disabled={loadingUpload || loadingSave}
+                          disabled={!canEdit || loadingUpload || loadingSave}
                           accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.zip,.rar"
                         />
                         <label
@@ -4115,7 +4111,9 @@ const ProgramData = ({ userRole }) => {
 
               <div className="sticky bottom-0 bg-white border-t px-6 py-4 flex justify-end gap-3">
                 <button
-                  onClick={() => !loadingSave && setShowModal(false)}
+                  onClick={() =>
+                    !loadingSave && !loadingUpload && setShowModal(false)
+                  }
                   disabled={loadingSave || loadingUpload}
                   className="px-4 py-2 border border-slate-200 rounded-2xl hover:bg-slate-50 transition disabled:opacity-50"
                 >
