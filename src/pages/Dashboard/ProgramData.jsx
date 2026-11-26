@@ -43,6 +43,41 @@ import { saveAs } from "file-saver";
 // ==================== Eskalasi Harga ====================
 const INFLASI_PER_TAHUN = 0.035; // 3,5% per tahun
 const TAHUN_REFERENSI_MULAI = 2015;
+const MAX_ASETS = 10;
+// Sesuaikan daftar ini dengan nomenklatur resmi unit di site.
+// Unit yang sudah tersimpan di Google Sheets otomatis ikut tersedia.
+const DEFAULT_UNIT_OPTIONS = [
+  "GT11",
+  "GT12",
+  "GT13",
+  "ST10",
+  "GT21",
+  "GT22",
+  "ST20",
+  "GT31",
+  "GT32",
+  "GT33",
+  "ST30",
+  "GT41",
+  "GT42",
+  "GT43",
+  "ST40",
+  "GT51",
+  "ST58",
+  "Common",
+];
+const splitAsets = (value) => [
+  ...new Set(
+    String(value ?? "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+  ),
+];
+const normalizeFilter = (value) =>
+  String(value ?? "")
+    .trim()
+    .toUpperCase();
 
 const parseTahun = (v) => {
   const n = parseInt(String(v ?? "").trim(), 10);
@@ -59,46 +94,15 @@ const hitungFaktorInflasi = (tahunReferensi, tahunProgram) => {
 };
 
 // ==================== Skeletons ====================
-const SkeletonTableRow = () => (
+const SkeletonTableRow = ({ isAdmin }) => (
   <tr className="border-t border-slate-100">
-    <td className="px-4 py-3">
-      <div className="h-4 bg-gray-200 rounded w-8 animate-pulse" />
-    </td>
-    <td className="px-4 py-3">
-      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse" />
-    </td>
-    <td className="px-4 py-3">
-      <div className="h-5 bg-gray-200 rounded w-48 animate-pulse" />
-      <div className="h-3 bg-gray-200 rounded w-64 mt-1 animate-pulse" />
-    </td>
-    <td className="px-4 py-3">
-      <div className="h-6 bg-gray-200 rounded w-24 animate-pulse" />
-    </td>
-    <td className="px-4 py-3">
-      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse" />
-    </td>
-    <td className="px-4 py-3 text-center">
-      <div className="h-6 bg-gray-200 rounded w-16 mx-auto animate-pulse" />
-    </td>
-    <td className="px-4 py-3 text-right">
-      <div className="h-4 bg-gray-200 rounded w-24 ml-auto animate-pulse" />
-    </td>
-    <td className="px-4 py-3 text-center">
-      <div className="h-6 bg-gray-200 rounded w-16 mx-auto animate-pulse" />
-    </td>
-    <td className="px-4 py-3 text-center">
-      <div className="h-4 bg-gray-200 rounded w-12 mx-auto animate-pulse" />
-    </td>
-    <td className="px-4 py-3 text-center">
-      <div className="h-4 bg-gray-200 rounded w-12 mx-auto animate-pulse" />
-    </td>
-    <td className="px-4 py-3 text-center">
-      <div className="flex gap-1 justify-center">
-        <div className="w-7 h-7 bg-gray-200 rounded-lg" />
-        <div className="w-7 h-7 bg-gray-200 rounded-lg" />
-        <div className="w-7 h-7 bg-gray-200 rounded-lg" />
-      </div>
-    </td>
+    {Array.from({ length: isAdmin ? 8 : 7 }, (_, i) => (
+      <td key={i} className="px-4 py-3">
+        <div
+          className={`h-4 bg-gray-200 rounded animate-pulse ${i === (isAdmin ? 2 : 1) ? "w-48" : "w-20"}`}
+        />
+      </td>
+    ))}
   </tr>
 );
 
@@ -140,6 +144,8 @@ const ProgramData = ({ userRole }) => {
 
   // Filters
   const [filterYear, setFilterYear] = useState("all");
+  const [filterUnit, setFilterUnit] = useState("all");
+  const [filterSumberAnggaran, setFilterSumberAnggaran] = useState("all");
   const [filterCluster, setFilterCluster] = useState("all");
   const [filterBidang, setFilterBidang] = useState("all");
   const [filterKeterangan, setFilterKeterangan] = useState("all");
@@ -377,6 +383,9 @@ const ProgramData = ({ userRole }) => {
 
   // Handlers
   const handleAdd = () => {
+    if (!canEdit) return;
+    setAssetSearch("");
+    setShowAssetDropdown(false);
     setEditingProgram(null);
     setFormData({
       programKerja: "",
@@ -387,6 +396,7 @@ const ProgramData = ({ userRole }) => {
       dasarInputProgram: "",
       sasaranRjpp: "",
       sumberAnggaran: "",
+      unit: "",
       estLevering: "",
       levelResikoInherent: "",
       levelRisikoResidual: "",
@@ -415,10 +425,13 @@ const ProgramData = ({ userRole }) => {
       showToast("Anda tidak memiliki izin mengedit program", "error");
       return;
     }
+    setAssetSearch("");
+    setShowAssetDropdown(false);
     setEditingProgram(program);
     setFormData({
       ...program,
       profilRisk: program.profilRisk || "",
+      unit: program.unit || "",
       tahunReferensiHarga: "", // harga tersimpan sudah final, jangan di-inflasi dua kali
     });
     setShowModal(true);
@@ -429,13 +442,58 @@ const ProgramData = ({ userRole }) => {
     setShowDetailModal(true);
   };
 
+  const selectedAsets = useMemo(
+    () => splitAsets(formData.aset),
+    [formData.aset],
+  );
+
+  // Pertahankan deskripsi lama bila master aset tidak tersedia.
+  const getAsetDescriptions = (names, previous) => {
+    const oldNames = splitAsets(previous.aset);
+    const oldDescriptions =
+      oldNames.length === 1
+        ? [String(previous.descriptionAset || "")]
+        : String(previous.descriptionAset || "").split(" | ");
+    return names
+      .map((name) => {
+        const master = assets.find((a) => a.namaAset === name);
+        const oldIndex = oldNames.indexOf(name);
+        return (
+          master?.deskripsi ||
+          (oldIndex >= 0 ? oldDescriptions[oldIndex] || "" : "")
+        );
+      })
+      .join(" | ");
+  };
+
   const handleAsetChange = (namaAset) => {
-    const asset = assets.find((a) => a.namaAset === namaAset);
-    setFormData((prev) => ({
-      ...prev,
-      aset: namaAset,
-      descriptionAset: asset ? asset.deskripsi : "",
-    }));
+    setFormData((prev) => {
+      // "Jasa" merupakan placeholder dari versi sebelumnya.
+      const current = splitAsets(prev.aset).filter(
+        (name) => name !== "Jasa" || namaAset === "Jasa",
+      );
+      if (current.includes(namaAset) || current.length >= MAX_ASETS)
+        return prev;
+      const next = [...current, namaAset];
+      return {
+        ...prev,
+        aset: next.join(", "),
+        descriptionAset: getAsetDescriptions(next, prev),
+      };
+    });
+    setAssetSearch("");
+    setShowAssetDropdown(false);
+  };
+
+  const handleRemoveAset = (namaAset) => {
+    setFormData((prev) => {
+      const next = splitAsets(prev.aset).filter((name) => name !== namaAset);
+      return {
+        ...prev,
+        aset: next.join(", "),
+        descriptionAset: getAsetDescriptions(next, prev),
+      };
+    });
   };
 
   const handleKategoriChange = (kategori) => {
@@ -445,8 +503,7 @@ const ProgramData = ({ userRole }) => {
         updated.hargaJasa = "";
       } else if (kategori === "Jasa") {
         updated.hargaMaterial = "";
-        updated.aset = "Jasa";
-        updated.descriptionAset = "";
+        // Aset tetap dapat dipilih untuk program jasa.
       }
       return updated;
     });
@@ -494,14 +551,17 @@ const ProgramData = ({ userRole }) => {
   }, [formData.tahun]);
 
   const filteredAssets = useMemo(() => {
-    if (!assetSearch.trim()) return assets;
     const q = assetSearch.toLowerCase().trim();
     return assets.filter(
       (a) =>
-        a.namaAset.toLowerCase().includes(q) ||
-        a.deskripsi.toLowerCase().includes(q),
+        a.namaAset &&
+        !selectedAsets.includes(a.namaAset) &&
+        (String(a.namaAset).toLowerCase().includes(q) ||
+          String(a.deskripsi || "")
+            .toLowerCase()
+            .includes(q)),
     );
-  }, [assets, assetSearch]);
+  }, [assets, assetSearch, selectedAsets]);
 
   const confirmDelete = (no, programName) => {
     if (!isAdmin) {
@@ -594,7 +654,7 @@ const ProgramData = ({ userRole }) => {
       showToast("File masih dalam proses upload", "error");
       return;
     }
-    if (editingProgram && !canEdit) {
+    if (!canEdit) {
       showToast("Anda tidak memiliki izin mengedit program", "error");
       return;
     }
@@ -618,6 +678,10 @@ const ProgramData = ({ userRole }) => {
       return;
     }
 
+    if (selectedAsets.length > MAX_ASETS) {
+      showToast("Maksimal 10 aset per program", "error");
+      return;
+    }
     const hM = parseFloat(formData.hargaMaterial) || 0;
     const hJ = parseFloat(formData.hargaJasa) || 0;
 
@@ -647,6 +711,8 @@ const ProgramData = ({ userRole }) => {
       const { tahunReferensiHarga, ...rest } = formData;
       const payload = {
         ...rest,
+        unit: String(formData.unit || "").trim(),
+        aset: selectedAsets.join(", "),
         hargaMaterial: pricing.adjM > 0 ? pricing.adjM : "",
         hargaJasa: pricing.adjJ > 0 ? pricing.adjJ : "",
         hargaTotal: pricing.total,
@@ -1050,6 +1116,7 @@ const ProgramData = ({ userRole }) => {
         { header: "KETERANGAN", key: "keterangan", width: 22 },
         { header: "PROFIL RISK", key: "profilRisk", width: 22 },
         { header: "AKTIVITAS AO", key: "aktivitasAo", width: 25 },
+        { header: "UNIT", key: "unit", width: 18 },
       ];
 
       sheet.columns = columns.map((col) => ({
@@ -1061,7 +1128,7 @@ const ProgramData = ({ userRole }) => {
         sheet,
         "RENCANA JANGKA PANJANG UNIT (RJPU)",
         "DATABASE PROGRAM KERJA DAN RENCANA ANGGARAN",
-        27,
+        columns.length,
       );
 
       const HEADER_ROW = 5;
@@ -1069,7 +1136,7 @@ const ProgramData = ({ userRole }) => {
 
       sheet.getRow(HEADER_ROW).values = columns.map((col) => col.header);
 
-      styleHeader(sheet, HEADER_ROW, 27);
+      styleHeader(sheet, HEADER_ROW, columns.length);
 
       // Warna khusus kelompok kolom anggaran
       ["O5", "S5"].forEach((address) => {
@@ -1104,7 +1171,7 @@ const ProgramData = ({ userRole }) => {
 
         row.values = values;
 
-        styleDataRow(row, 27, index);
+        styleDataRow(row, columns.length, index);
 
         // Tinggi baris menyesuaikan isi program
         const estimatedLines = Math.max(
@@ -1207,7 +1274,7 @@ const ProgramData = ({ userRole }) => {
       // Filter Excel
       sheet.autoFilter = {
         from: `A${HEADER_ROW}`,
-        to: `AA${lastDataRow}`,
+        to: `AB${lastDataRow}`,
       };
 
       // Total anggaran
@@ -1238,7 +1305,7 @@ const ProgramData = ({ userRole }) => {
         cell.numFmt = CURRENCY_FORMAT;
       });
 
-      styleTotal(totalRow, 27);
+      styleTotal(totalRow, columns.length);
 
       sheet.pageSetup = {
         paperSize: 9,
@@ -1709,15 +1776,50 @@ const ProgramData = ({ userRole }) => {
     return [...new Set([...keteranganOptions, ...existing])];
   }, [programs]);
 
+  const unitOptions = useMemo(() => {
+    const units = [
+      ...DEFAULT_UNIT_OPTIONS,
+      ...programs.map((p) => p.unit),
+      formData.unit,
+    ];
+    const unique = new Map();
+    for (const unit of units) {
+      const value = String(unit || "").trim();
+      if (value && !unique.has(normalizeFilter(value)))
+        unique.set(normalizeFilter(value), value);
+    }
+    return [...unique.values()].sort((a, b) =>
+      a.localeCompare(b, "id", { numeric: true }),
+    );
+  }, [programs, formData.unit]);
+
+  const filterSumberOptions = useMemo(
+    () => [
+      ...new Set([
+        ...sumberAnggaranOptions,
+        ...programs
+          .map((p) => normalizeFilter(p.sumberAnggaran))
+          .filter(Boolean),
+      ]),
+    ],
+    [programs],
+  );
+
   const getFilteredPrograms = useCallback(() => {
-    let filtered = programs;
+    let filtered = [...programs];
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(
         (p) =>
           p.programKerja?.toLowerCase().includes(term) ||
           p.klusterProgram?.toLowerCase().includes(term) ||
-          p.tahun?.includes(term) ||
+          String(p.tahun || "").includes(term) ||
+          String(p.unit || "")
+            .toLowerCase()
+            .includes(term) ||
+          String(p.no || "")
+            .toLowerCase()
+            .includes(term) ||
           p.sumberAnggaran?.toLowerCase().includes(term) ||
           p.bidang?.toLowerCase().includes(term) ||
           p.kategori?.toLowerCase().includes(term) ||
@@ -1734,8 +1836,21 @@ const ProgramData = ({ userRole }) => {
             .includes(term),
       );
     }
+    if (filterUnit !== "all")
+      filtered = filtered.filter((p) =>
+        filterUnit === "__empty__"
+          ? !normalizeFilter(p.unit)
+          : normalizeFilter(p.unit) === normalizeFilter(filterUnit),
+      );
+    if (filterSumberAnggaran !== "all")
+      filtered = filtered.filter((p) =>
+        filterSumberAnggaran === "__empty__"
+          ? !normalizeFilter(p.sumberAnggaran)
+          : normalizeFilter(p.sumberAnggaran) ===
+            normalizeFilter(filterSumberAnggaran),
+      );
     if (filterYear !== "all")
-      filtered = filtered.filter((p) => p.tahun === filterYear);
+      filtered = filtered.filter((p) => String(p.tahun) === filterYear);
     if (filterCluster !== "all")
       filtered = filtered.filter((p) => p.klusterProgram === filterCluster);
     if (filterBidang !== "all")
@@ -1777,6 +1892,8 @@ const ProgramData = ({ userRole }) => {
     programs,
     searchTerm,
     filterYear,
+    filterUnit,
+    filterSumberAnggaran,
     filterCluster,
     filterBidang,
     filterKeterangan,
@@ -1802,6 +1919,8 @@ const ProgramData = ({ userRole }) => {
   const resetFilters = () => {
     setSearchTerm("");
     setFilterYear("all");
+    setFilterUnit("all");
+    setFilterSumberAnggaran("all");
     setFilterCluster("all");
     setFilterBidang("all");
     setFilterKeterangan("all");
@@ -1907,7 +2026,7 @@ const ProgramData = ({ userRole }) => {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {[...Array(13)].map((_, i) => (
+                  {[...Array(isAdmin ? 8 : 7)].map((_, i) => (
                     <th key={i} className="px-4 py-4">
                       <div className="h-3 bg-gray-200 rounded w-12 animate-pulse" />
                     </th>
@@ -1916,7 +2035,7 @@ const ProgramData = ({ userRole }) => {
               </thead>
               <tbody>
                 {[...Array(5)].map((_, i) => (
-                  <SkeletonTableRow key={i} />
+                  <SkeletonTableRow key={i} isAdmin={isAdmin} />
                 ))}
               </tbody>
             </table>
@@ -2204,7 +2323,7 @@ const ProgramData = ({ userRole }) => {
               <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Cari program, bidang, status, aset, strategi..."
+                placeholder="Cari no, program, unit, anggaran, aset..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -2283,7 +2402,7 @@ const ProgramData = ({ userRole }) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mt-3">
             <div>
               <label
                 htmlFor="filter-bidang"
@@ -2340,9 +2459,67 @@ const ProgramData = ({ userRole }) => {
                 ))}
               </select>
             </div>
+            <div>
+              <label
+                htmlFor="filter-unit"
+                className="block text-xs font-semibold text-slate-500 mb-1"
+              >
+                Filter Unit
+              </label>
+              <select
+                id="filter-unit"
+                value={filterUnit}
+                onChange={(e) => {
+                  setFilterUnit(e.target.value);
+                  setCurrentPage(1);
+                  setSelectedPrograms([]);
+                }}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400"
+              >
+                <option value="all">Semua Unit</option>
+                {programs.some((p) => !normalizeFilter(p.unit)) && (
+                  <option value="__empty__">Tanpa Unit</option>
+                )}
+                {unitOptions.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="filter-sumber-anggaran"
+                className="block text-xs font-semibold text-slate-500 mb-1"
+              >
+                Filter Sumber Anggaran
+              </label>
+              <select
+                id="filter-sumber-anggaran"
+                value={filterSumberAnggaran}
+                onChange={(e) => {
+                  setFilterSumberAnggaran(e.target.value);
+                  setCurrentPage(1);
+                  setSelectedPrograms([]);
+                }}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400"
+              >
+                <option value="all">Semua Sumber Anggaran</option>
+                {programs.some((p) => !normalizeFilter(p.sumberAnggaran)) && (
+                  <option value="__empty__">Tanpa Sumber Anggaran</option>
+                )}
+                {filterSumberOptions.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           {(searchTerm ||
             filterYear !== "all" ||
+            filterUnit !== "all" ||
+            filterSumberAnggaran !== "all" ||
             filterCluster !== "all" ||
             filterBidang !== "all" ||
             filterKeterangan !== "all") && (
@@ -2396,70 +2573,27 @@ const ProgramData = ({ userRole }) => {
                       />
                     </th>
                   )}
-                  <th
-                    className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition"
-                    onClick={() => requestSort("no")}
-                  >
-                    <div className="flex items-center">
-                      No {getSortIcon("no")}
-                    </div>
-                  </th>
-                  <th
-                    className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition"
-                    onClick={() => requestSort("programKerja")}
-                  >
-                    <div className="flex items-center">
-                      Program Kerja {getSortIcon("programKerja")}
-                    </div>
-                  </th>
-                  <th
-                    className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition"
-                    onClick={() => requestSort("keterangan")}
-                  >
-                    <div className="flex items-center">
-                      Keterangan / Status {getSortIcon("keterangan")}
-                    </div>
-                  </th>
-                  <th
-                    className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition"
-                    onClick={() => requestSort("kategori")}
-                  >
-                    <div className="flex items-center">
-                      Kategori {getSortIcon("kategori")}
-                    </div>
-                  </th>
-                  <th
-                    className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition"
-                    onClick={() => requestSort("bidang")}
-                  >
-                    <div className="flex items-center">
-                      Bidang {getSortIcon("bidang")}
-                    </div>
-                  </th>
-                  <th
-                    className="px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition"
-                    onClick={() => requestSort("aset")}
-                  >
-                    <div className="flex items-center">
-                      Aset {getSortIcon("aset")}
-                    </div>
-                  </th>
-                  <th
-                    className="px-4 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition"
-                    onClick={() => requestSort("hargaTotal")}
-                  >
-                    <div className="flex items-center justify-end">
-                      Total {getSortIcon("hargaTotal")}
-                    </div>
-                  </th>
-                  <th
-                    className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition"
-                    onClick={() => requestSort("tahun")}
-                  >
-                    <div className="flex items-center justify-center">
-                      Tahun {getSortIcon("tahun")}
-                    </div>
-                  </th>
+                  {[
+                    ["no", "NO"],
+                    ["programKerja", "Nama Program"],
+                    ["sumberAnggaran", "Sumber Anggaran"],
+                    ["unit", "Unit"],
+                    ["tahun", "Tahun"],
+                    ["hargaTotal", "Harga Total"],
+                  ].map(([key, label]) => (
+                    <th
+                      key={key}
+                      onClick={() => requestSort(key)}
+                      className={`px-4 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition ${key === "hargaTotal" ? "text-right" : "text-left"}`}
+                    >
+                      <div
+                        className={`flex items-center ${key === "hargaTotal" ? "justify-end" : ""}`}
+                      >
+                        {label}
+                        {getSortIcon(key)}
+                      </div>
+                    </th>
+                  ))}
                   <th className="px-4 py-4 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Aksi
                   </th>
@@ -2502,46 +2636,22 @@ const ProgramData = ({ userRole }) => {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <span
-                          title={program.keterangan || "Belum Ada Status"}
-                          className={`inline-block max-w-[180px] truncate align-middle px-2 py-1 text-xs font-semibold rounded-lg ${getKeteranganBadge(program.keterangan)}`}
-                        >
-                          {program.keterangan || "Belum Ada Status"}
-                        </span>
+                      <td className="px-4 py-3 text-sm font-semibold text-slate-700">
+                        {program.sumberAnggaran || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-semibold text-slate-700">
+                        {program.unit || "-"}
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs font-medium rounded-lg ${getKategoriBadge(program.kategori)}`}
-                        >
-                          {program.kategori || "-"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm text-slate-700">
-                          {program.bidang || "-"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-sm text-slate-700">
-                          {program.aset || "-"}
-                        </div>
-                        {program.descriptionAset && (
-                          <div className="text-xs text-slate-400 mt-0.5 line-clamp-1">
-                            {program.descriptionAset}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-bold text-emerald-600">
-                          {formatCurrencyShort(program.hargaTotal)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
                         <span
                           className={`inline-flex px-2 py-1 text-xs font-bold rounded-lg ${getYearBadgeColor(program.tahun)}`}
                         >
                           {program.tahun || "-"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <span className="text-sm font-bold text-emerald-600">
+                          {formatCurrency(program.hargaTotal)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -2712,6 +2822,16 @@ const ProgramData = ({ userRole }) => {
                     >
                       {program.tahun || "-"}
                     </span>
+                    {program.unit && (
+                      <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700">
+                        {program.unit}
+                      </span>
+                    )}
+                    {program.sumberAnggaran && (
+                      <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-emerald-50 text-emerald-700">
+                        {program.sumberAnggaran}
+                      </span>
+                    )}
                     {program.bidang && (
                       <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-slate-100 text-slate-700">
                         {program.bidang}
@@ -3022,6 +3142,14 @@ const ProgramData = ({ userRole }) => {
                     </label>
                     <p className="font-medium text-slate-700 mt-1">
                       {selectedProgram.sumberAnggaran || "-"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-2xl p-3">
+                    <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Unit
+                    </label>
+                    <p className="font-medium text-slate-700 mt-1">
+                      {selectedProgram.unit || "-"}
                     </p>
                   </div>
                   <div className="bg-slate-50 rounded-2xl p-3">
@@ -3491,6 +3619,40 @@ const ProgramData = ({ userRole }) => {
                     </select>
                   </div>
 
+                  <div>
+                    <label
+                      htmlFor="program-unit"
+                      className="block text-sm font-semibold mb-1 text-slate-700"
+                    >
+                      Unit
+                    </label>
+                    <select
+                      id="program-unit"
+                      value={String(formData.unit || "").trim()}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          unit: e.target.value,
+                        }))
+                      }
+                      disabled={loadingSave}
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
+                    >
+                      <option value="">Pilih Unit</option>
+                      {formData.unit &&
+                        !unitOptions.includes(String(formData.unit).trim()) && (
+                          <option value={String(formData.unit).trim()}>
+                            {String(formData.unit).trim()}
+                          </option>
+                        )}
+                      {unitOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   {formData.sumberAnggaran === "AO" && (
                     <div>
                       <label className="block text-sm font-semibold mb-1 text-indigo-700">
@@ -3894,87 +4056,106 @@ const ProgramData = ({ userRole }) => {
                     </p>
                   </div>
 
-                  {/* ASET (searchable) */}
+                  {/* MULTI ASET: maksimal 10, simpan sebagai teks dipisah koma */}
                   <div className="md:col-span-2 relative">
-                    <label className="block text-sm font-semibold mb-1 text-slate-700">
-                      Aset{" "}
-                      <span className="text-xs font-normal text-slate-400">
-                        (bisa cari berdasarkan nama)
+                    <div className="flex justify-between items-center mb-1">
+                      <label
+                        htmlFor="asset-search"
+                        className="text-sm font-semibold text-slate-700"
+                      >
+                        Aset (maksimal {MAX_ASETS})
+                      </label>
+                      <span className="text-xs font-semibold text-slate-500">
+                        {selectedAsets.length}/{MAX_ASETS} aset
                       </span>
-                    </label>
-                    {formData.kategori === "Jasa" ? (
-                      <input
-                        type="text"
-                        value="Jasa"
-                        disabled
-                        className="w-full px-4 py-2.5 border border-slate-200 bg-slate-50 rounded-2xl text-slate-600 cursor-not-allowed"
-                      />
-                    ) : (
-                      <>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {selectedAsets.map((name) => (
+                        <span
+                          key={name}
+                          className="inline-flex items-center gap-2 bg-sky-50 text-sky-800 border border-sky-200 rounded-lg px-3 py-1.5 text-sm"
+                        >
+                          {name}
+                          <button
+                            type="button"
+                            title={`Hapus ${name}`}
+                            aria-label={`Hapus ${name}`}
+                            disabled={loadingSave}
+                            onClick={() => handleRemoveAset(name)}
+                            className="hover:text-red-600"
+                          >
+                            <FiX size={14} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="relative">
+                      <div className="flex gap-2">
                         <input
+                          id="asset-search"
                           type="text"
-                          value={
-                            showAssetDropdown
-                              ? assetSearch
-                              : formData.aset || ""
-                          }
+                          value={assetSearch}
                           onChange={(e) => {
                             setAssetSearch(e.target.value);
                             setShowAssetDropdown(true);
                           }}
-                          onFocus={() => {
-                            setAssetSearch("");
-                            setShowAssetDropdown(true);
-                          }}
+                          onFocus={() => setShowAssetDropdown(true)}
                           onBlur={() =>
                             setTimeout(() => setShowAssetDropdown(false), 200)
                           }
-                          disabled={loadingSave || loadingAssets}
-                          className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
-                          placeholder="Ketik nama aset untuk mencari..."
+                          disabled={
+                            loadingSave ||
+                            loadingAssets ||
+                            selectedAsets.length >= MAX_ASETS
+                          }
+                          placeholder={
+                            loadingAssets
+                              ? "Memuat master aset..."
+                              : selectedAsets.length >= MAX_ASETS
+                                ? "Maksimal 10 aset tercapai"
+                                : "Cari nama atau deskripsi aset..."
+                          }
+                          className="flex-1 min-w-0 px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 disabled:bg-gray-100"
                         />
-                        {showAssetDropdown && (
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => setShowAssetDropdown((v) => !v)}
+                          disabled={
+                            loadingSave ||
+                            loadingAssets ||
+                            selectedAsets.length >= MAX_ASETS
+                          }
+                          className="flex items-center gap-2 px-4 py-2.5 bg-sky-700 text-white rounded-2xl disabled:opacity-50"
+                        >
+                          <FiPlus size={16} /> Tambah Aset
+                        </button>
+                      </div>
+                      {showAssetDropdown &&
+                        !loadingSave &&
+                        !loadingAssets &&
+                        selectedAsets.length < MAX_ASETS && (
                           <div
                             className="absolute z-[60] mt-1 w-full max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-xl"
                             onMouseDown={(e) => e.preventDefault()}
                           >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  aset: "",
-                                  descriptionAset: "",
-                                }));
-                                setShowAssetDropdown(false);
-                                setAssetSearch("");
-                              }}
-                              className="w-full text-left px-4 py-2 hover:bg-red-50 text-red-600 transition border-b border-slate-100 font-medium text-sm flex items-center justify-between sticky top-0 bg-white"
-                            >
-                              <span>Kosongkan Pilihan Aset</span>
-                              <FiX size={14} />
-                            </button>
                             {filteredAssets.length === 0 ? (
                               <div className="px-4 py-3 text-sm text-slate-400 text-center">
-                                Tidak ditemukan aset
+                                Tidak ditemukan aset lain
                               </div>
                             ) : (
                               filteredAssets.map((a) => (
                                 <button
                                   key={a.namaAset}
                                   type="button"
-                                  onClick={() => {
-                                    handleAsetChange(a.namaAset);
-                                    setShowAssetDropdown(false);
-                                    setAssetSearch("");
-                                  }}
-                                  className="w-full text-left px-4 py-2 hover:bg-sky-50 transition border-b border-slate-100 last:border-0 group"
+                                  onClick={() => handleAsetChange(a.namaAset)}
+                                  className="w-full text-left px-4 py-2 hover:bg-sky-50 border-b border-slate-100 last:border-0"
                                 >
-                                  <div className="font-medium text-slate-800 text-sm group-hover:text-sky-700">
+                                  <div className="font-medium text-slate-800 text-sm">
                                     {a.namaAset}
                                   </div>
                                   {a.deskripsi && (
-                                    <div className="text-xs text-slate-400 line-clamp-1 group-hover:text-sky-600">
+                                    <div className="text-xs text-slate-400">
                                       {a.deskripsi}
                                     </div>
                                   )}
@@ -3983,20 +4164,39 @@ const ProgramData = ({ userRole }) => {
                             )}
                           </div>
                         )}
-                      </>
+                    </div>
+                    {selectedAsets.length > 0 && (
+                      <button
+                        type="button"
+                        disabled={loadingSave}
+                        onClick={() => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            aset: "",
+                            descriptionAset: "",
+                          }));
+                          setAssetSearch("");
+                          setShowAssetDropdown(false);
+                        }}
+                        className="mt-2 text-xs font-medium text-red-600 hover:underline"
+                      >
+                        Kosongkan semua aset
+                      </button>
                     )}
+                    <p className="mt-2 text-xs text-slate-500">
+                      Aset disimpan dalam satu sel Google Sheets, dipisahkan
+                      koma.
+                    </p>
                   </div>
-
                   <div className="md:col-span-2">
                     <label className="block text-sm font-semibold mb-1 text-slate-700">
                       Deskripsi Aset
                     </label>
-                    <input
-                      type="text"
+                    <textarea
                       value={formData.descriptionAset || ""}
                       readOnly
-                      disabled
-                      className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl bg-slate-50 text-slate-600 cursor-not-allowed"
+                      rows={3}
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl bg-slate-50 text-slate-600"
                       placeholder="Terisi otomatis dari aset"
                     />
                   </div>

@@ -38,9 +38,10 @@ const COLUMN_NAMES = [
   "KETERANGAN",
   "PROFIL RISK",
   "AKTIVITAS AO",
+  "UNIT",
 ];
 
-// Urutan key sama persis dengan urutan kolom A..AA
+// Urutan key sama persis dengan urutan kolom A..AB
 const FIELD_KEYS = [
   "no",
   "programKerja",
@@ -69,9 +70,10 @@ const FIELD_KEYS = [
   "keterangan",
   "profilRisk",
   "aktivitasAo",
+  "unit",
 ];
 
-// Sheet Drop = 25 kolom pertama Data + 5 kolom tambahan (total 30, A..AD)
+// Sheet Drop = 25 kolom pertama Data + 6 kolom tambahan (total 31, A..AE)
 const DROP_HEADERS = [
   ...COLUMN_NAMES.slice(0, 25),
   "DROP DATE",
@@ -79,6 +81,7 @@ const DROP_HEADERS = [
   "ORIGINAL NO",
   "PROFIL RISK",
   "AKTIVITAS AO",
+  "UNIT",
 ];
 
 const NOTIF_HEADERS = [
@@ -95,6 +98,20 @@ const NOTIF_HEADERS = [
 ];
 
 const num = (v) => parseFloat(v) || 0;
+const MAX_ASETS = 10;
+const splitAsets = (value) => [
+  ...new Set(
+    (Array.isArray(value) ? value : String(value ?? "").split(","))
+      .map((x) => String(x).trim())
+      .filter(Boolean),
+  ),
+];
+const normalizeAsets = (value) => {
+  const names = splitAsets(value);
+  if (names.length > MAX_ASETS)
+    throw new Error("Maksimal 10 aset per program.");
+  return names.join(", ");
+};
 
 class DataSheetOperations {
   constructor() {
@@ -127,10 +144,11 @@ class DataSheetOperations {
       KETERANGAN: 24,
       PROFIL_RISK: 25,
       AKTIVITAS_AO: 26,
+      UNIT: 27,
     };
     this.columnNames = COLUMN_NAMES;
-    this.dataRange = "A:AA";
-    this.lastColumnLetter = "AA";
+    this.dataRange = "A:AB";
+    this.lastColumnLetter = "AB";
     this.validKategori = ["Material", "Jasa", "Material & Jasa"];
 
     // ==== Opsi ====
@@ -277,7 +295,7 @@ class DataSheetOperations {
     };
   }
 
-  // Bangun satu baris A..AA dari objek data (dipakai addData & bulkInsert)
+  // Bangun satu baris A..AB dari objek data (dipakai addData & bulkInsert)
   buildRow(no, d, v) {
     return [
       no,
@@ -302,11 +320,12 @@ class DataSheetOperations {
       v.hargaJasa || "",
       d.tkdn || "",
       d.strategisRjpu || "",
-      d.aset || "",
+      normalizeAsets(d.aset),
       d.descriptionAset || "",
       d.keterangan || "",
       d.profilRisk || "",
       d.aktivitasAo || "",
+      String(d.unit || "").trim(),
     ];
   }
 
@@ -511,14 +530,14 @@ class DataSheetOperations {
   async ensureHeaders() {
     try {
       // Cukup baca baris 1, bukan seluruh sheet
-      const rawData = await sheetsService.getRawData(SHEET_DATA, "A1:AA1");
+      const rawData = await sheetsService.getRawData(SHEET_DATA, "A1:AB1");
       if (
         !Array.isArray(rawData) ||
         rawData.length === 0 ||
         !rawData[0] ||
         rawData[0].length === 0
       ) {
-        await sheetsService.writeData(`${SHEET_DATA}!A1:AA1`, [COLUMN_NAMES]);
+        await sheetsService.writeData(`${SHEET_DATA}!A1:AB1`, [COLUMN_NAMES]);
         console.log("✅ Headers created for Data sheet");
         return;
       }
@@ -534,6 +553,9 @@ class DataSheetOperations {
         "AKTIVITAS AO"
       ) {
         await sheetsService.updateCell(`${SHEET_DATA}!AA1`, "AKTIVITAS AO");
+      }
+      if (String(currentHeaders[this.columns.UNIT] ?? "").trim() !== "UNIT") {
+        await sheetsService.updateCell(`${SHEET_DATA}!AB1`, "UNIT");
       }
     } catch (error) {
       console.error("Error ensuring headers:", error);
@@ -557,14 +579,16 @@ class DataSheetOperations {
     if (this._dropEnsured) return;
     const exists = await sheetsService.sheetExists(SHEET_DROP);
     if (!exists) {
-      await sheetsService.writeData(`${SHEET_DROP}!A1:AD1`, [DROP_HEADERS]);
+      await sheetsService.writeData(`${SHEET_DROP}!A1:AE1`, [DROP_HEADERS]);
     } else {
-      const hdr = await sheetsService.getRawData(SHEET_DROP, "A1:AD1");
+      const hdr = await sheetsService.getRawData(SHEET_DROP, "A1:AE1");
       const h = (hdr && hdr[0]) || [];
       if (String(h[28] ?? "").trim() !== "PROFIL RISK")
         await sheetsService.updateCell(`${SHEET_DROP}!AC1`, "PROFIL RISK");
       if (String(h[29] ?? "").trim() !== "AKTIVITAS AO")
         await sheetsService.updateCell(`${SHEET_DROP}!AD1`, "AKTIVITAS AO");
+      if (String(h[30] ?? "").trim() !== "UNIT")
+        await sheetsService.updateCell(`${SHEET_DROP}!AE1`, "UNIT");
     }
     this._dropEnsured = true;
   }
@@ -913,6 +937,19 @@ class DataSheetOperations {
     return allData.filter((item) => item.sumberAnggaran === sumber);
   }
 
+  async getDataByUnit(unit) {
+    const allData = await this.getAllData();
+    const target = String(unit ?? "")
+      .trim()
+      .toUpperCase();
+    return allData.filter(
+      (item) =>
+        String(item.unit ?? "")
+          .trim()
+          .toUpperCase() === target,
+    );
+  }
+
   async getDataByBidang(bidang) {
     const userFilter = this.getUserFilter();
     if (!userFilter.isAdmin && bidang !== userFilter.bidangFilter) return [];
@@ -927,7 +964,9 @@ class DataSheetOperations {
 
   async getDataByAset(aset) {
     const allData = await this.getAllData();
-    return allData.filter((item) => item.aset === aset);
+    return allData.filter((item) =>
+      splitAsets(item.aset).includes(String(aset).trim()),
+    );
   }
 
   async getDataByTkdn(tkdn) {
@@ -970,7 +1009,7 @@ class DataSheetOperations {
       // Dari cache: verifikasi dengan membaca HANYA baris itu
       const fresh = await sheetsService.getRawData(
         SHEET_DATA,
-        `A${idx + 1}:AA${idx + 1}`,
+        `A${idx + 1}:AB${idx + 1}`,
       );
       const row = fresh && fresh[0];
       if (row && String(row[C.NO] ?? "") === target)
@@ -1096,7 +1135,7 @@ class DataSheetOperations {
 
       const programId = this.generateProgramId(kodeAwal, nextSeq);
 
-      // Susun data sesuai mapping A:AA
+      // Susun data sesuai mapping A:AB
       const newRow = this.buildRow(programId, data, v);
 
       if (newRow.length !== COLUMN_NAMES.length) {
@@ -1211,12 +1250,18 @@ class DataSheetOperations {
             return v.hargaMaterial || "";
           case C.HARGA_JASA:
             return v.hargaJasa || "";
+          case C.ASET:
+            return updatedData.aset === undefined
+              ? currentRow[C.ASET] || ""
+              : normalizeAsets(updatedData.aset);
+          case C.UNIT:
+            return String(getVal("unit", C.UNIT)).trim();
           default:
             return getVal(key, idx);
         }
       });
 
-      const range = `${SHEET_DATA}!A${loc.sheetRow}:AA${loc.sheetRow}`;
+      const range = `${SHEET_DATA}!A${loc.sheetRow}:AB${loc.sheetRow}`;
       const result = await sheetsService.writeData(range, [updatedRow]);
       this.assertWrite(result, "Gagal update program.");
 
@@ -1251,7 +1296,7 @@ class DataSheetOperations {
       const [, writeResult] = await Promise.all([
         this.deleteNotificationsByProgramNo(no),
         sheetsService.writeData(
-          `${SHEET_DATA}!A${loc.sheetRow}:AA${loc.sheetRow}`,
+          `${SHEET_DATA}!A${loc.sheetRow}:AB${loc.sheetRow}`,
           [emptyRow],
         ),
       ]);
@@ -1345,16 +1390,19 @@ class DataSheetOperations {
         no.toString(),
         rowData[C.PROFIL_RISK] || "",
         rowData[C.AKTIVITAS_AO] || "",
+        rowData[C.UNIT] || "",
       );
 
       await this.ensureDropSheet();
-      await this.appendRowsFromColumnA(SHEET_DROP, "AD", 30, [dropRow]);
+      await this.appendRowsFromColumnA(SHEET_DROP, "AE", DROP_HEADERS.length, [
+        dropRow,
+      ]);
 
       const emptyRow = Array(COLUMN_NAMES.length).fill("");
       const [, writeResult] = await Promise.all([
         this.deleteNotificationsByProgramNo(no),
         sheetsService.writeData(
-          `${SHEET_DATA}!A${loc.sheetRow}:AA${loc.sheetRow}`,
+          `${SHEET_DATA}!A${loc.sheetRow}:AB${loc.sheetRow}`,
           [emptyRow],
         ),
       ]);
@@ -1392,9 +1440,10 @@ class DataSheetOperations {
       const target = asString(originalNo);
       if (!target) throw new Error("NO program belum dipilih.");
 
+      await this.ensureDropSheet();
       // Baca sheet Drop & Data paralel
       const [dropRaw, dataRaw] = await Promise.all([
-        sheetsService.getRawData(SHEET_DROP, "A:AD"),
+        sheetsService.getRawData(SHEET_DROP, "A:AE"),
         this.getSheetRaw(true),
       ]);
 
@@ -1444,7 +1493,7 @@ class DataSheetOperations {
 
       const targetSheetRow = Math.max(2, dataRaw.length + 1);
       const restoreResult = await sheetsService.writeData(
-        `${SHEET_DATA}!A${targetSheetRow}:AA${targetSheetRow}`,
+        `${SHEET_DATA}!A${targetSheetRow}:AB${targetSheetRow}`,
         [restoredRow],
       );
       this.assertWrite(restoreResult, "Gagal restore ke Data.");
@@ -1453,8 +1502,8 @@ class DataSheetOperations {
       // Kosongkan baris sumber di Drop
       const dropSheetRow = dropRowIndex + 1;
       await sheetsService.writeData(
-        `${SHEET_DROP}!A${dropSheetRow}:AD${dropSheetRow}`,
-        [Array(30).fill("")],
+        `${SHEET_DROP}!A${dropSheetRow}:AE${dropSheetRow}`,
+        [Array(DROP_HEADERS.length).fill("")],
       );
 
       return {
@@ -1731,7 +1780,7 @@ class DataSheetOperations {
       if (item.klusterProgram) clusters.add(item.klusterProgram);
       if (item.bidang) bidangs.add(item.bidang);
       if (item.kategori) kategoris.add(item.kategori);
-      if (item.aset) asets.add(item.aset);
+      for (const aset of splitAsets(item.aset)) asets.add(aset);
     }
 
     return {
