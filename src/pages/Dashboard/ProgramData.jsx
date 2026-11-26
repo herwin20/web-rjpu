@@ -79,6 +79,92 @@ const normalizeFilter = (value) =>
     .trim()
     .toUpperCase();
 
+// Unit disimpan sebagai satu string CSV, dengan deduplikasi case-insensitive.
+const splitUnits = (value) => {
+  const unique = new Map();
+  const values = Array.isArray(value) ? value : String(value ?? "").split(",");
+  for (const raw of values) {
+    const unit = String(raw ?? "").trim();
+    if (unit && !unique.has(normalizeFilter(unit))) {
+      unique.set(normalizeFilter(unit), unit);
+    }
+  }
+  return [...unique.values()];
+};
+
+// Ringkasan hanya untuk tampilan; nilai keterangan asli tetap disimpan.
+const STATUS_LABELS = {
+  "BELUM DIMULAI": "Belum Dimulai",
+  "ON PROGRESS": "On Progress",
+  DISKUSI: "Diskusi",
+  LANJUT: "Lanjut",
+  DITUNDA: "Ditunda",
+  SELESAI: "Selesai",
+  DROP: "Drop",
+};
+
+const cleanKeterangan = (value) =>
+  String(value ?? "")
+    .replace(/\*\*/g, "")
+    .replace(/&(?:#x20|#32|nbsp);/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getStatusLabel = (value) => {
+  const text = cleanKeterangan(value);
+  return Object.hasOwn(STATUS_LABELS, normalizeFilter(text))
+    ? STATUS_LABELS[normalizeFilter(text)]
+    : "";
+};
+
+const truncateKeterangan = (text, max = 45) => {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${space > max * 0.6 ? cut.slice(0, space) : cut}…`;
+};
+
+const summarizeKeterangan = (value) => {
+  const text = cleanKeterangan(value);
+  if (!text) return "Belum Ada Status";
+  const status = getStatusLabel(text);
+  if (status) return status;
+  // Keterangan hasil impor: tampilkan jenis program dan kekurangan data,
+  // bukan seluruh metadata. Jangan menganggap catatan ini status progres.
+  const jenis = text
+    .match(/(?:^|\|)\s*KETERANGAN JENIS PROGRAM\s*:\s*([^|]+)/i)?.[1]
+    ?.trim();
+  const dataBelumLengkap = /tahun\s*\/\s*harga\s+belum\s+tersedia/i.test(text);
+  if (jenis || dataBelumLengkap) {
+    return truncateKeterangan(
+      [jenis, dataBelumLengkap ? "Tahun/harga belum tersedia" : ""]
+        .filter(Boolean)
+        .join(" · "),
+    );
+  }
+  return truncateKeterangan(text);
+};
+
+const getSumberAnggaranBadge = (value) => {
+  switch (normalizeFilter(value)) {
+    case "AI":
+      return "bg-indigo-100 text-indigo-700 ring-indigo-200";
+    case "AO":
+      return "bg-teal-100 text-teal-700 ring-teal-200";
+    default:
+      return "bg-slate-100 text-slate-600 ring-slate-200";
+  }
+};
+
+const SumberAnggaranBadge = ({ value }) => (
+  <span
+    className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${getSumberAnggaranBadge(value)}`}
+    title={String(value ?? "")}
+  >
+    {normalizeFilter(value) || "-"}
+  </span>
+);
+
 const parseTahun = (v) => {
   const n = parseInt(String(v ?? "").trim(), 10);
   return Number.isFinite(n) ? n : null;
@@ -96,7 +182,7 @@ const hitungFaktorInflasi = (tahunReferensi, tahunProgram) => {
 // ==================== Skeletons ====================
 const SkeletonTableRow = ({ isAdmin }) => (
   <tr className="border-t border-slate-100">
-    {Array.from({ length: isAdmin ? 8 : 7 }, (_, i) => (
+    {Array.from({ length: isAdmin ? 9 : 8 }, (_, i) => (
       <td key={i} className="px-4 py-3">
         <div
           className={`h-4 bg-gray-200 rounded animate-pulse ${i === (isAdmin ? 2 : 1) ? "w-48" : "w-20"}`}
@@ -431,7 +517,7 @@ const ProgramData = ({ userRole }) => {
     setFormData({
       ...program,
       profilRisk: program.profilRisk || "",
-      unit: program.unit || "",
+      unit: splitUnits(program.unit).join(", "),
       tahunReferensiHarga: "", // harga tersimpan sudah final, jangan di-inflasi dua kali
     });
     setShowModal(true);
@@ -440,6 +526,29 @@ const ProgramData = ({ userRole }) => {
   const handleViewDetail = (program) => {
     setSelectedProgram(program);
     setShowDetailModal(true);
+  };
+
+  const selectedUnits = useMemo(
+    () => splitUnits(formData.unit),
+    [formData.unit],
+  );
+
+  const handleAddUnit = (unit) => {
+    if (!unit || !canEdit || loadingSave) return;
+    setFormData((prev) => ({
+      ...prev,
+      unit: splitUnits([...splitUnits(prev.unit), unit]).join(", "),
+    }));
+  };
+
+  const handleRemoveUnit = (unit) => {
+    if (!canEdit || loadingSave) return;
+    setFormData((prev) => ({
+      ...prev,
+      unit: splitUnits(prev.unit)
+        .filter((value) => normalizeFilter(value) !== normalizeFilter(unit))
+        .join(", "),
+    }));
   };
 
   const selectedAsets = useMemo(
@@ -711,7 +820,7 @@ const ProgramData = ({ userRole }) => {
       const { tahunReferensiHarga, ...rest } = formData;
       const payload = {
         ...rest,
-        unit: String(formData.unit || "").trim(),
+        unit: selectedUnits.join(", "),
         aset: selectedAsets.join(", "),
         hargaMaterial: pricing.adjM > 0 ? pricing.adjM : "",
         hargaJasa: pricing.adjJ > 0 ? pricing.adjJ : "",
@@ -1116,7 +1225,7 @@ const ProgramData = ({ userRole }) => {
         { header: "KETERANGAN", key: "keterangan", width: 22 },
         { header: "PROFIL RISK", key: "profilRisk", width: 22 },
         { header: "AKTIVITAS AO", key: "aktivitasAo", width: 25 },
-        { header: "UNIT", key: "unit", width: 18 },
+        { header: "UNIT", key: "unit", width: 28 },
       ];
 
       sheet.columns = columns.map((col) => ({
@@ -1150,7 +1259,10 @@ const ProgramData = ({ userRole }) => {
         const rowNumber = FIRST_DATA_ROW + index;
 
         const values = columns.map((col) => {
-          const value = item[col.key];
+          const value =
+            col.key === "unit"
+              ? splitUnits(item.unit).join(", ")
+              : item[col.key];
 
           if (["hargaTotal", "hargaMaterial", "hargaJasa"].includes(col.key)) {
             return toNumber(value);
@@ -1178,6 +1290,7 @@ const ProgramData = ({ userRole }) => {
           Math.ceil(String(item.programKerja || "").length / 48),
           Math.ceil(String(item.alasanProgram || "").length / 48),
           Math.ceil(String(item.descriptionAset || "").length / 38),
+          Math.ceil(splitUnits(item.unit).join(", ").length / 24),
           1,
         );
 
@@ -1724,6 +1837,8 @@ const ProgramData = ({ userRole }) => {
   const formatCurrencyShort = (amount) => {
     if (!amount || amount === 0) return "Rp 0";
     const num = parseFloat(amount);
+    if (num >= 1_000_000_000_000)
+      return `Rp ${(num / 1_000_000_000_000).toFixed(1)}T`;
     if (num >= 1_000_000_000) return `Rp ${(num / 1_000_000_000).toFixed(1)}M`;
     if (num >= 1_000_000) return `Rp ${(num / 1_000_000).toFixed(1)}JT`;
     if (num >= 1_000) return `Rp ${(num / 1_000).toFixed(1)}RB`;
@@ -1779,8 +1894,8 @@ const ProgramData = ({ userRole }) => {
   const unitOptions = useMemo(() => {
     const units = [
       ...DEFAULT_UNIT_OPTIONS,
-      ...programs.map((p) => p.unit),
-      formData.unit,
+      ...programs.flatMap((p) => splitUnits(p.unit)),
+      ...splitUnits(formData.unit),
     ];
     const unique = new Map();
     for (const unit of units) {
@@ -1839,8 +1954,10 @@ const ProgramData = ({ userRole }) => {
     if (filterUnit !== "all")
       filtered = filtered.filter((p) =>
         filterUnit === "__empty__"
-          ? !normalizeFilter(p.unit)
-          : normalizeFilter(p.unit) === normalizeFilter(filterUnit),
+          ? splitUnits(p.unit).length === 0
+          : splitUnits(p.unit).some(
+              (unit) => normalizeFilter(unit) === normalizeFilter(filterUnit),
+            ),
       );
     if (filterSumberAnggaran !== "all")
       filtered = filtered.filter((p) =>
@@ -1871,7 +1988,10 @@ const ProgramData = ({ userRole }) => {
         let aVal = a[sortConfig.key];
         let bVal = b[sortConfig.key];
 
-        if (sortConfig.key === "hargaTotal") {
+        if (sortConfig.key === "keterangan") {
+          aVal = summarizeKeterangan(aVal).toLowerCase();
+          bVal = summarizeKeterangan(bVal).toLowerCase();
+        } else if (sortConfig.key === "hargaTotal") {
           aVal = parseFloat(aVal) || 0;
           bVal = parseFloat(bVal) || 0;
         } else if (sortConfig.key === "tahun") {
@@ -1962,7 +2082,7 @@ const ProgramData = ({ userRole }) => {
       Selesai: "bg-emerald-100 text-emerald-700",
       Drop: "bg-red-100 text-red-700",
     };
-    return classes[status] || "bg-gray-100 text-gray-600";
+    return classes[getStatusLabel(status)] || "bg-gray-100 text-gray-600";
   };
 
   const getKategoriBadge = (kategori) => {
@@ -2026,7 +2146,7 @@ const ProgramData = ({ userRole }) => {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {[...Array(isAdmin ? 8 : 7)].map((_, i) => (
+                  {[...Array(isAdmin ? 9 : 8)].map((_, i) => (
                     <th key={i} className="px-4 py-4">
                       <div className="h-3 bg-gray-200 rounded w-12 animate-pulse" />
                     </th>
@@ -2453,8 +2573,8 @@ const ProgramData = ({ userRole }) => {
                   <option value="__empty__">Belum Ada Status</option>
                 )}
                 {filterKeteranganOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
+                  <option key={status} value={status} title={status}>
+                    {summarizeKeterangan(status)}
                   </option>
                 ))}
               </select>
@@ -2477,7 +2597,7 @@ const ProgramData = ({ userRole }) => {
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sky-400"
               >
                 <option value="all">Semua Unit</option>
-                {programs.some((p) => !normalizeFilter(p.unit)) && (
+                {programs.some((p) => splitUnits(p.unit).length === 0) && (
                   <option value="__empty__">Tanpa Unit</option>
                 )}
                 {unitOptions.map((opt) => (
@@ -2580,6 +2700,7 @@ const ProgramData = ({ userRole }) => {
                     ["unit", "Unit"],
                     ["tahun", "Tahun"],
                     ["hargaTotal", "Harga Total"],
+                    ["keterangan", "Status"],
                   ].map(([key, label]) => (
                     <th
                       key={key}
@@ -2636,11 +2757,11 @@ const ProgramData = ({ userRole }) => {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm font-semibold text-slate-700">
-                        {program.sumberAnggaran || "-"}
+                      <td className="px-4 py-3">
+                        <SumberAnggaranBadge value={program.sumberAnggaran} />
                       </td>
                       <td className="px-4 py-3 text-sm font-semibold text-slate-700">
-                        {program.unit || "-"}
+                        {splitUnits(program.unit).join(", ") || "-"}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -2652,6 +2773,18 @@ const ProgramData = ({ userRole }) => {
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <span className="text-sm font-bold text-emerald-600">
                           {formatCurrency(program.hargaTotal)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          title={String(
+                            program.keterangan || "Belum Ada Status",
+                          )}
+                          className={`inline-flex max-w-[220px] rounded-lg px-2.5 py-1 text-xs font-semibold ${getKeteranganBadge(program.keterangan)}`}
+                        >
+                          <span className="truncate">
+                            {summarizeKeterangan(program.keterangan)}
+                          </span>
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -2808,9 +2941,12 @@ const ProgramData = ({ userRole }) => {
                   )}
                   <div className="flex flex-wrap gap-2 mb-3">
                     <span
-                      className={`inline-flex px-2 py-1 text-xs rounded-lg font-semibold ${getKeteranganBadge(program.keterangan)}`}
+                      title={String(program.keterangan || "Belum Ada Status")}
+                      className={`inline-flex max-w-full px-2 py-1 text-xs rounded-lg font-semibold ${getKeteranganBadge(program.keterangan)}`}
                     >
-                      {program.keterangan || "Belum Ada Status"}
+                      <span className="truncate">
+                        {summarizeKeterangan(program.keterangan)}
+                      </span>
                     </span>
                     <span
                       className={`inline-flex px-2 py-1 text-xs rounded-lg ${getKategoriBadge(program.kategori)}`}
@@ -2822,15 +2958,16 @@ const ProgramData = ({ userRole }) => {
                     >
                       {program.tahun || "-"}
                     </span>
-                    {program.unit && (
-                      <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700">
-                        {program.unit}
+                    {splitUnits(program.unit).map((unit) => (
+                      <span
+                        key={normalizeFilter(unit)}
+                        className="inline-flex px-2 py-1 text-xs rounded-lg bg-sky-50 text-sky-700"
+                      >
+                        {unit}
                       </span>
-                    )}
+                    ))}
                     {program.sumberAnggaran && (
-                      <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-emerald-50 text-emerald-700">
-                        {program.sumberAnggaran}
-                      </span>
+                      <SumberAnggaranBadge value={program.sumberAnggaran} />
                     )}
                     {program.bidang && (
                       <span className="inline-flex px-2 py-1 text-xs rounded-lg bg-slate-100 text-slate-700">
@@ -3140,16 +3277,18 @@ const ProgramData = ({ userRole }) => {
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                       Sumber Anggaran
                     </label>
-                    <p className="font-medium text-slate-700 mt-1">
-                      {selectedProgram.sumberAnggaran || "-"}
-                    </p>
+                    <div className="mt-1">
+                      <SumberAnggaranBadge
+                        value={selectedProgram.sumberAnggaran}
+                      />
+                    </div>
                   </div>
                   <div className="bg-slate-50 rounded-2xl p-3">
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                       Unit
                     </label>
                     <p className="font-medium text-slate-700 mt-1">
-                      {selectedProgram.unit || "-"}
+                      {splitUnits(selectedProgram.unit).join(", ") || "-"}
                     </p>
                   </div>
                   <div className="bg-slate-50 rounded-2xl p-3">
@@ -3301,8 +3440,14 @@ const ProgramData = ({ userRole }) => {
                     <span
                       className={`inline-flex px-3 py-1.5 text-sm font-semibold rounded-lg ${getKeteranganBadge(selectedProgram.keterangan)}`}
                     >
-                      {selectedProgram.keterangan || "Belum Ada Status"}
+                      {summarizeKeterangan(selectedProgram.keterangan)}
                     </span>
+                    {cleanKeterangan(selectedProgram.keterangan) &&
+                      !getStatusLabel(selectedProgram.keterangan) && (
+                        <p className="mt-2 text-sm text-slate-600 whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-3">
+                          {selectedProgram.keterangan}
+                        </p>
+                      )}
                   </div>
                 </div>
 
@@ -3628,29 +3773,52 @@ const ProgramData = ({ userRole }) => {
                     </label>
                     <select
                       id="program-unit"
-                      value={String(formData.unit || "").trim()}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          unit: e.target.value,
-                        }))
-                      }
-                      disabled={loadingSave}
+                      value=""
+                      onChange={(e) => handleAddUnit(e.target.value)}
+                      disabled={loadingSave || !canEdit}
                       className="w-full px-4 py-2.5 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-sky-400 transition disabled:bg-gray-100 disabled:opacity-50"
                     >
-                      <option value="">Pilih Unit</option>
-                      {formData.unit &&
-                        !unitOptions.includes(String(formData.unit).trim()) && (
-                          <option value={String(formData.unit).trim()}>
-                            {String(formData.unit).trim()}
+                      <option value="">
+                        {selectedUnits.length ? "+ Tambah Unit" : "Pilih Unit"}
+                      </option>
+                      {unitOptions
+                        .filter(
+                          (opt) =>
+                            !selectedUnits.some(
+                              (unit) =>
+                                normalizeFilter(unit) === normalizeFilter(opt),
+                            ),
+                        )
+                        .map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
                           </option>
-                        )}
-                      {unitOptions.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
+                        ))}
                     </select>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedUnits.map((unit) => (
+                        <span
+                          key={normalizeFilter(unit)}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-sky-50 border border-sky-200 px-2.5 py-1.5 text-xs font-semibold text-sky-700"
+                        >
+                          {unit}
+                          <button
+                            type="button"
+                            disabled={loadingSave || !canEdit}
+                            onClick={() => handleRemoveUnit(unit)}
+                            aria-label={`Hapus unit ${unit}`}
+                            title={`Hapus ${unit}`}
+                            className="rounded p-0.5 hover:bg-sky-200 disabled:opacity-50"
+                          >
+                            <FiX size={13} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {selectedUnits.length} unit dipilih. Bisa memilih lebih
+                      dari satu unit.
+                    </p>
                   </div>
 
                   {formData.sumberAnggaran === "AO" && (
@@ -4290,8 +4458,12 @@ const ProgramData = ({ userRole }) => {
                       <option value="">Pilih Status Program</option>
                       {formData.keterangan &&
                         !keteranganOptions.includes(formData.keterangan) && (
-                          <option value={formData.keterangan}>
-                            {formData.keterangan} (keterangan lama)
+                          <option
+                            value={formData.keterangan}
+                            title={formData.keterangan}
+                          >
+                            {summarizeKeterangan(formData.keterangan)}{" "}
+                            (keterangan lama)
                           </option>
                         )}
                       {keteranganOptions.map((status) => (
