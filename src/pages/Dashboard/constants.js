@@ -65,6 +65,14 @@ export const MENU_ITEMS = [
     description: "Analisis dan statistik",
   },
   {
+    id: "kesimpulan-rjpu",
+    label: "Kesimpulan RJPU",
+    icon: "file-text",
+    path: "/dashboard/kesimpulan-rjpu",
+    roles: ["Admin", "User"],
+    description: "Kesimpulan RJPU",
+  },
+  {
     id: "users",
     label: "Kelola User",
     icon: "users",

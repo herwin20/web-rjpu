@@ -1,0 +1,590 @@
+{
+  "meta": {
+    "name": "RJPU Historical Exposure v2",
+    "version": "2.0.0",
+    "history_from": 2020,
+    "history_to": 2025,
+    "forecast_year": 2026,
+    "forecast_target": "reported FO/FD/SF rows and reported loss MWh",
+    "limitations": [
+      "No independently validated events",
+      "Unknown external/coupled losses",
+      "Small annual sample",
+      "No economic assumptions filled",
+      "Deployment guardrail uses 2025 holdout; requires fresh independent validation",
+      "Unit snapshot; not project-level benefit"
+    ]
+  },
+  "selected_methods": {
+    "events": "GradientBoosting_log",
+    "loss": "RandomForest_log"
+  },
+  "provisional_deployment_methods": {
+    "events": "GradientBoosting_log",
+    "loss": "Baseline_mean3"
+  },
+  "validation_metrics": [
+    {
+      "target": "events",
+      "year": 2024,
+      "method": "Baseline_mean3",
+      "n": 17,
+      "MAE": 5.7647058824,
+      "RMSE": 7.7560855298,
+      "selected_on_validation": false
+    },
+    {
+      "target": "events",
+      "year": 2024,
+      "method": "Ridge_log",
+      "n": 17,
+      "MAE": 5.3988688973,
+      "RMSE": 7.5832702142,
+      "selected_on_validation": false
+    },
+    {
+      "target": "events",
+      "year": 2024,
+      "method": "RandomForest_log",
+      "n": 17,
+      "MAE": 5.1676318123,
+      "RMSE": 6.9174567173,
+      "selected_on_validation": false
+    },
+    {
+      "target": "events",
+      "year": 2024,
+      "method": "GradientBoosting_log",
+      "n": 17,
+      "MAE": 4.3616924349,
+      "RMSE": 6.0420993591,
+      "selected_on_validation": true
+    },
+    {
+      "target": "events",
+      "year": 2025,
+      "method": "Baseline_mean3",
+      "n": 17,
+      "MAE": 7.4901960784,
+      "RMSE": 11.1008449305,
+      "selected_on_validation": false
+    },
+    {
+      "target": "events",
+      "year": 2025,
+      "method": "Ridge_log",
+      "n": 17,
+      "MAE": 7.4240329146,
+      "RMSE": 10.3886877204,
+      "selected_on_validation": false
+    },
+    {
+      "target": "events",
+      "year": 2025,
+      "method": "RandomForest_log",
+      "n": 17,
+      "MAE": 6.3354450778,
+      "RMSE": 9.3468261977,
+      "selected_on_validation": false
+    },
+    {
+      "target": "events",
+      "year": 2025,
+      "method": "GradientBoosting_log",
+      "n": 17,
+      "MAE": 7.1204132539,
+      "RMSE": 9.9014325829,
+      "selected_on_validation": true
+    },
+    {
+      "target": "loss",
+      "year": 2024,
+      "method": "Baseline_mean3",
+      "n": 17,
+      "MAE": 61497.5468627451,
+      "RMSE": 131080.6408749261,
+      "selected_on_validation": false
+    },
+    {
+      "target": "loss",
+      "year": 2024,
+      "method": "Ridge_log",
+      "n": 17,
+      "MAE": 55598.2939275239,
+      "RMSE": 135288.751347296,
+      "selected_on_validation": false
+    },
+    {
+      "target": "loss",
+      "year": 2024,
+      "method": "RandomForest_log",
+      "n": 17,
+      "MAE": 29062.3394472302,
+      "RMSE": 45534.7939576137,
+      "selected_on_validation": true
+    },
+    {
+      "target": "loss",
+      "year": 2024,
+      "method": "GradientBoosting_log",
+      "n": 17,
+      "MAE": 30469.1544898789,
+      "RMSE": 49813.1888200516,
+      "selected_on_validation": false
+    },
+    {
+      "target": "loss",
+      "year": 2025,
+      "method": "Baseline_mean3",
+      "n": 16,
+      "MAE": 68215.0646875,
+      "RMSE": 103484.3894382545,
+      "selected_on_validation": false
+    },
+    {
+      "target": "loss",
+      "year": 2025,
+      "method": "Ridge_log",
+      "n": 16,
+      "MAE": 1081643.8632548433,
+      "RMSE": 3896726.559718225,
+      "selected_on_validation": false
+    },
+    {
+      "target": "loss",
+      "year": 2025,
+      "method": "RandomForest_log",
+      "n": 16,
+      "MAE": 87741.9931330314,
+      "RMSE": 169373.9751234925,
+      "selected_on_validation": true
+    },
+    {
+      "target": "loss",
+      "year": 2025,
+      "method": "GradientBoosting_log",
+      "n": 16,
+      "MAE": 89966.3800787409,
+      "RMSE": 186354.0253943244,
+      "selected_on_validation": false
+    }
+  ],
+  "unit_predictions": {
+    "ST14": {
+      "unit": "ST14",
+      "forecast_year": 2026,
+      "events_forecast": 19.2868619099,
+      "loss_forecast": 32590.3,
+      "events_validation_selected_forecast": 19.2868619099,
+      "loss_validation_selected_forecast": 8115.5546309738,
+      "events_index": 95.5882352941,
+      "loss_index": 72.7272727273,
+      "exposure_index": 84.1577540107,
+      "historical_mean_events": 24.3333333333,
+      "historical_mean_loss_mwh": 450074.38,
+      "loss_years_available": 5
+    },
+    "GT51": {
+      "unit": "GT51",
+      "forecast_year": 2026,
+      "events_forecast": 8.3749199817,
+      "loss_forecast": 556348.6666666666,
+      "events_validation_selected_forecast": 8.3749199817,
+      "loss_validation_selected_forecast": 143902.3300576952,
+      "events_index": 72.0588235294,
+      "loss_index": 95.4545454545,
+      "exposure_index": 83.756684492,
+      "historical_mean_events": 9.6666666667,
+      "historical_mean_loss_mwh": 343112.3833333334,
+      "loss_years_available": 6
+    },
+    "ST58": {
+      "unit": "ST58",
+      "forecast_year": 2026,
+      "events_forecast": 9.7786662653,
+      "loss_forecast": 298742.7,
+      "events_validation_selected_forecast": 9.7786662653,
+      "loss_validation_selected_forecast": 201797.1662654984,
+      "events_index": 73.5294117647,
+      "loss_index": 90.9090909091,
+      "exposure_index": 82.2192513369,
+      "historical_mean_events": 11.8333333333,
+      "historical_mean_loss_mwh": 183363.8166666667,
+      "loss_years_available": 6
+    },
+    "ST20": {
+      "unit": "ST20",
+      "forecast_year": 2026,
+      "events_forecast": 6.3610922628,
+      "loss_forecast": 135653.4233333333,
+      "events_validation_selected_forecast": 6.3610922628,
+      "loss_validation_selected_forecast": 4216.7295853907,
+      "events_index": 57.3529411765,
+      "loss_index": 86.3636363636,
+      "exposure_index": 71.8582887701,
+      "historical_mean_events": 6.1666666667,
+      "historical_mean_loss_mwh": 67826.7116666667,
+      "loss_years_available": 6
+    },
+    "ST40": {
+      "unit": "ST40",
+      "forecast_year": 2026,
+      "events_forecast": 9.1147040962,
+      "loss_forecast": 20590.8666666667,
+      "events_validation_selected_forecast": 9.1147040962,
+      "loss_validation_selected_forecast": 15467.3081214484,
+      "events_index": 73.5294117647,
+      "loss_index": 65.1515151515,
+      "exposure_index": 69.3404634581,
+      "historical_mean_events": 2.0,
+      "historical_mean_loss_mwh": 10295.4333333333,
+      "loss_years_available": 6
+    },
+    "GT31": {
+      "unit": "GT31",
+      "forecast_year": 2026,
+      "events_forecast": 5.168190851,
+      "loss_forecast": 29046.0033333333,
+      "events_validation_selected_forecast": 5.168190851,
+      "loss_validation_selected_forecast": 5506.3025943327,
+      "events_index": 54.4117647059,
+      "loss_index": 72.7272727273,
+      "exposure_index": 63.5695187166,
+      "historical_mean_events": 6.3333333333,
+      "historical_mean_loss_mwh": 15760.785,
+      "loss_years_available": 6
+    },
+    "GT32": {
+      "unit": "GT32",
+      "forecast_year": 2026,
+      "events_forecast": 5.0556190652,
+      "loss_forecast": 28114.6333333333,
+      "events_validation_selected_forecast": 5.0556190652,
+      "loss_validation_selected_forecast": 5732.9521677744,
+      "events_index": 54.4117647059,
+      "loss_index": 72.7272727273,
+      "exposure_index": 63.5695187166,
+      "historical_mean_events": 6.3333333333,
+      "historical_mean_loss_mwh": 15104.9833333333,
+      "loss_years_available": 6
+    },
+    "GT33": {
+      "unit": "GT33",
+      "forecast_year": 2026,
+      "events_forecast": 5.0868626742,
+      "loss_forecast": 29439.7766666667,
+      "events_validation_selected_forecast": 5.0868626742,
+      "loss_validation_selected_forecast": 7267.5122785733,
+      "events_index": 54.4117647059,
+      "loss_index": 72.7272727273,
+      "exposure_index": 63.5695187166,
+      "historical_mean_events": 5.6666666667,
+      "historical_mean_loss_mwh": 15288.055,
+      "loss_years_available": 6
+    },
+    "ST30": {
+      "unit": "ST30",
+      "forecast_year": 2026,
+      "events_forecast": 8.0802816308,
+      "loss_forecast": 4282.9,
+      "events_validation_selected_forecast": 8.0802816308,
+      "loss_validation_selected_forecast": 6226.8258205063,
+      "events_index": 72.0588235294,
+      "loss_index": 50.0,
+      "exposure_index": 61.0294117647,
+      "historical_mean_events": 5.8333333333,
+      "historical_mean_loss_mwh": 1713.16,
+      "loss_years_available": 5
+    },
+    "GT41": {
+      "unit": "GT41",
+      "forecast_year": 2026,
+      "events_forecast": 5.2050824704,
+      "loss_forecast": 16852.69,
+      "events_validation_selected_forecast": 5.2050824704,
+      "loss_validation_selected_forecast": 8321.7826575235,
+      "events_index": 54.4117647059,
+      "loss_index": 63.6363636364,
+      "exposure_index": 59.0240641711,
+      "historical_mean_events": 5.6666666667,
+      "historical_mean_loss_mwh": 28958.1283333333,
+      "loss_years_available": 6
+    },
+    "GT43": {
+      "unit": "GT43",
+      "forecast_year": 2026,
+      "events_forecast": 5.4669606756,
+      "loss_forecast": 14584.01,
+      "events_validation_selected_forecast": 5.4669606756,
+      "loss_validation_selected_forecast": 12911.9128247336,
+      "events_index": 54.4117647059,
+      "loss_index": 62.1212121212,
+      "exposure_index": 58.2664884135,
+      "historical_mean_events": 4.6666666667,
+      "historical_mean_loss_mwh": 12456.055,
+      "loss_years_available": 6
+    },
+    "GT22": {
+      "unit": "GT22",
+      "forecast_year": 2026,
+      "events_forecast": 2.0790825293,
+      "loss_forecast": 57224.7733333333,
+      "events_validation_selected_forecast": 2.0790825293,
+      "loss_validation_selected_forecast": 3264.8780147718,
+      "events_index": 33.8235294118,
+      "loss_index": 78.7878787879,
+      "exposure_index": 56.3057040998,
+      "historical_mean_events": 6.1666666667,
+      "historical_mean_loss_mwh": 35024.0033333333,
+      "loss_years_available": 6
+    },
+    "GT21": {
+      "unit": "GT21",
+      "forecast_year": 2026,
+      "events_forecast": 2.8500575824,
+      "loss_forecast": 57681.5,
+      "events_validation_selected_forecast": 2.8500575824,
+      "loss_validation_selected_forecast": 2587.1604493653,
+      "events_index": 33.8235294118,
+      "loss_index": 78.7878787879,
+      "exposure_index": 56.3057040998,
+      "historical_mean_events": 7.3333333333,
+      "historical_mean_loss_mwh": 35734.9333333333,
+      "loss_years_available": 6
+    },
+    "GT42": {
+      "unit": "GT42",
+      "forecast_year": 2026,
+      "events_forecast": 3.981830471,
+      "loss_forecast": 17686.2766666667,
+      "events_validation_selected_forecast": 3.981830471,
+      "loss_validation_selected_forecast": 4925.2784137363,
+      "events_index": 39.7058823529,
+      "loss_index": 63.6363636364,
+      "exposure_index": 51.6711229947,
+      "historical_mean_events": 5.6666666667,
+      "historical_mean_loss_mwh": 29279.1883333333,
+      "loss_years_available": 6
+    },
+    "GT11": {
+      "unit": "GT11",
+      "forecast_year": 2026,
+      "events_forecast": 2.1893867215,
+      "loss_forecast": 4455.5333333333,
+      "events_validation_selected_forecast": 2.1893867215,
+      "loss_validation_selected_forecast": 225.1367300518,
+      "events_index": 33.8235294118,
+      "loss_index": 50.0,
+      "exposure_index": 41.9117647059,
+      "historical_mean_events": 6.0,
+      "historical_mean_loss_mwh": 6178.0833333333,
+      "loss_years_available": 6
+    },
+    "GT12": {
+      "unit": "GT12",
+      "forecast_year": 2026,
+      "events_forecast": 1.5794585684,
+      "loss_forecast": 4558.3,
+      "events_validation_selected_forecast": 1.5794585684,
+      "loss_validation_selected_forecast": 137.2327819148,
+      "events_index": 25.0,
+      "loss_index": 50.0,
+      "exposure_index": 37.5,
+      "historical_mean_events": 4.3333333333,
+      "historical_mean_loss_mwh": 6047.5666666667,
+      "loss_years_available": 6
+    },
+    "GT13": {
+      "unit": "GT13",
+      "forecast_year": 2026,
+      "events_forecast": 1.7651228722,
+      "loss_forecast": 1420.9666666667,
+      "events_validation_selected_forecast": 1.7651228722,
+      "loss_validation_selected_forecast": 239.8327235665,
+      "events_index": 25.0,
+      "loss_index": 34.8484848485,
+      "exposure_index": 29.9242424242,
+      "historical_mean_events": 8.1666666667,
+      "historical_mean_loss_mwh": 203737.54,
+      "loss_years_available": 5
+    }
+  },
+  "technical_model": {
+    "weights": {
+      "inherentRisk": 20,
+      "riskReduction": 15,
+      "clusterPriority": 8,
+      "strategicAlignment": 7,
+      "basisInput": 5,
+      "timing": 8,
+      "leadTime": 4,
+      "status": 3
+    },
+    "lookups": {
+      "riskLevels": {
+        "Rendah": {
+          "score": 15
+        },
+        "Moderat": {
+          "score": 40
+        },
+        "Tinggi": {
+          "score": 75
+        },
+        "Sangat Tinggi": {
+          "score": 100
+        }
+      },
+      "levelsReducedScore": {
+        "0": 20,
+        "1": 60,
+        "2": 85,
+        "3": 100
+      },
+      "clusters": {
+        "Anti Blackout": {
+          "score": 100
+        },
+        "Regulasi": {
+          "score": 100
+        },
+        "Kehandalan Pembangkit": {
+          "score": 90
+        },
+        "Major OH & HGPP": {
+          "score": 80
+        },
+        "Replace": {
+          "score": 70
+        },
+        "Keep and Improve": {
+          "score": 55
+        },
+        "Infrastruktur IT": {
+          "score": 45
+        },
+        "Keep": {
+          "score": 40
+        },
+        "Infrastruktur Sipil & Bangunan": {
+          "score": 40
+        },
+        "Tools & Alat Berat": {
+          "score": 35
+        },
+        "_default": {
+          "score": 50
+        }
+      },
+      "strategicCodes": {
+        "_catatan": "Kode P-/O- mengacu sheet Strategi. Kode A1, C4, D1-D5, E1, E8, A3 berasal dari linkage korporat sementara dan maknanya tidak ada di workbook, jadi dibiarkan netral (50) sampai Anda isi.",
+        "P-2.3": 90,
+        "P-2.1": 90,
+        "P-2.4": 70,
+        "O-1.1": 80,
+        "O-1.4": 75,
+        "P-2.2": 60,
+        "P-1.1": 60,
+        "P-3.2": 55,
+        "_default": 50
+      },
+      "basisInput": {
+        "Kepatuhan Regulasi": 100,
+        "Kajian Enjinering (FMEA, RCFA, ECP, LCM)": 90,
+        "Assesment Unit (RLA, RKU)": 85,
+        "Maintenance History Analysis (PM, PdM, CM)": 80,
+        "Manufacture Recommended": 75,
+        "Outage Management": 70,
+        "Aging (Life Cycle)": 65,
+        "Optimasi Inventory Control (strategic spare)": 55,
+        "Evaluasi Kebutuhan Sarana & Infrastruktur": 50,
+        "_default": 40
+      },
+      "tkdn": {
+        "Ya": 100,
+        "Tidak": 30,
+        "_default": 50
+      },
+      "status": {
+        "Lanjut": 100,
+        "On Progress": 100,
+        "Belum Dimulai": 50,
+        "Diskusi": 30,
+        "Ditunda": 20,
+        "_default": 50,
+        "_catatan": "Lanjut/On Progress diberi skor tinggi agar komitmen berjalan tidak terbengkalai."
+      }
+    },
+    "scales": {
+      "timingYearOffset": [
+        [0, 100],
+        [1, 85],
+        [2, 70],
+        [3, 55],
+        [4, 40],
+        [5, 25],
+        [6, 10]
+      ],
+      "leadTimeSlackMonths": [
+        [0, 100],
+        [6, 70],
+        [18, 40],
+        [36, 15]
+      ]
+    },
+    "fieldMap": {
+      "id": "NO",
+      "nama": "PROGRAM KERJA",
+      "cluster": "KLUSTER PROGRAM",
+      "basis": "DASAR INPUT PROGRAM",
+      "sasaran": "SASARAN RJPP",
+      "sumberAnggaran": "SUMBER ANGGARAN",
+      "estLevering": "EST LEVERING",
+      "inherent": "LEVEL RESIKO INHERENT",
+      "residual": "LEVEL RISIKO RESIDUAL",
+      "tahun": "TAHUN",
+      "harga": "HARGA TOTAL",
+      "bidang": "BIDANG",
+      "tkdn": "TKDN",
+      "strategis": "STRATEGIS RJPU",
+      "status": "KETERANGAN"
+    },
+    "overrides": [
+      {
+        "id": "wajib_regulasi",
+        "label": "Wajib regulasi / K3",
+        "minScore": 70,
+        "any": [
+          {
+            "field": "cluster",
+            "equals": "Regulasi"
+          },
+          {
+            "field": "basis",
+            "equals": "Kepatuhan Regulasi"
+          },
+          {
+            "field": "sasaran",
+            "in": ["Regulasi/Peraturan Pemerintah", "Safety/K3 (HSE)"]
+          }
+        ]
+      }
+    ],
+    "excludeStatus": ["Selesai", "Drop"],
+    "missingPolicy": "review_no_score",
+    "economics_status": "INPUT_REQUIRED"
+  },
+  "economics": {
+    "margin_rp_kwh": null,
+    "repair_cost_rp": null,
+    "gas_rp_mmbtu": null,
+    "hsd_rp_liter": null,
+    "effectiveness": null,
+    "discount_rate": null
+  },
+  "data_quality": {
+    "removed_duplicates": 3,
+    "remaining_flagged": 17,
+    "missing_loss_rows": 3
+  }
+}

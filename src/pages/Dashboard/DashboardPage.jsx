@@ -25,6 +25,7 @@ import {
   FiRefreshCw,
   FiShield,
   FiClock,
+  FiFileText,
 } from "react-icons/fi";
 
 import ProgramData from "./ProgramData";
@@ -37,6 +38,7 @@ import NotificationPanel from "../components/NotificationPanel";
 import RjpuAnggaran from "./AnggaranPage";
 import TimelinePage from "./TimeLinePage";
 import LogoAwal from "../../assets/logo_awal.png";
+import KesimpulanRjpu from "./kesimpulanRJPUPage";
 
 import {
   MENU_ITEMS,
@@ -60,6 +62,7 @@ const ICONS = {
   archive: FiArchive,
   activity: FiActivity,
   users: FiUsers,
+  "file-text": FiFileText,
 };
 
 const focusRing =
@@ -681,6 +684,16 @@ export default function Dashboard({ user, onLogout }) {
               path="/statistics"
               element={
                 <DisbursementData
+                  userRole={user?.role}
+                  stats={stats}
+                  loading={loading}
+                />
+              }
+            />
+            <Route
+              path="/kesimpulan-rjpu"
+              element={
+                <KesimpulanRjpu
                   userRole={user?.role}
                   stats={stats}
                   loading={loading}

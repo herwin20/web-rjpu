@@ -1,0 +1,453 @@
+{
+  "meta": {
+    "nama": "Model Prioritas RJPU (MCDA + Ekonomi)",
+    "versi": "1.0.0",
+    "mata_uang": "IDR",
+    "deskripsi": "Skor 0-100 = jumlah terbobot dari 4 kelompok kriteria (Risiko, Strategis, Ekonomi, Waktu & Kesiapan), dikurangi penalti kelengkapan data. Sisi ekonomi memakai eskalasi harga, diskonto, PV biaya vs PV manfaat (expected annual loss yang dihindari), BCR, NPV dan payback.",
+    "catatan_validasi": "Nilai bertanda ASUMSI (EAL per level risiko, umur manfaat, discount rate, skor kluster/kode strategis) wajib divalidasi dengan Manajemen Risiko, Keuangan dan Perencanaan sebelum dipakai untuk keputusan."
+  },
+  "parameters": {
+    "baseYear": 2026,
+    "priceReferenceYear": 2026,
+    "inflationRate": 0.027,
+    "discountRate": 0.1,
+    "minRiskReductionFactor": 0.1,
+    "defaultUsefulLifeYears": 10,
+    "priceUnit": {
+      "autoDetect": true,
+      "thresholdRupiah": 10000000,
+      "multiplierIfBelow": 1000,
+      "catatan": "Di sheet Data, 177 dari 351 baris punya HARGA TOTAL < Rp10 juta (mis. 1.300.000 untuk retrofit WTP) sehingga hampir pasti satuannya ribu rupiah. Baris dengan nilai < threshold dikali multiplier. Lebih aman bila ditambah kolom SATUAN HARGA di sheet."
+    },
+    "excludeStatus": [
+      "Selesai",
+      "Drop"
+    ],
+    "missingScore": 40
+  },
+  "fieldMap": {
+    "id": "NO",
+    "nama": "PROGRAM KERJA",
+    "cluster": "KLUSTER PROGRAM",
+    "basis": "DASAR INPUT PROGRAM",
+    "sasaran": "SASARAN RJPP",
+    "sumberAnggaran": "SUMBER ANGGARAN",
+    "estLevering": "EST LEVERING",
+    "inherent": "LEVEL RESIKO INHERENT",
+    "residual": "LEVEL RISIKO RESIDUAL",
+    "tahun": "TAHUN",
+    "harga": "HARGA TOTAL",
+    "bidang": "BIDANG",
+    "tkdn": "TKDN",
+    "strategis": "STRATEGIS RJPU",
+    "status": "KETERANGAN"
+  },
+  "lookups": {
+    "riskLevels": {
+      "Rendah": {
+        "score": 15,
+        "ealRp": 50000000,
+        "catatan": "ASUMSI EAL Rp50 juta/tahun"
+      },
+      "Moderat": {
+        "score": 40,
+        "ealRp": 500000000,
+        "catatan": "ASUMSI EAL Rp500 juta/tahun"
+      },
+      "Tinggi": {
+        "score": 75,
+        "ealRp": 3000000000,
+        "catatan": "ASUMSI EAL Rp3 miliar/tahun"
+      },
+      "Sangat Tinggi": {
+        "score": 100,
+        "ealRp": 15000000000,
+        "catatan": "ASUMSI EAL Rp15 miliar/tahun"
+      }
+    },
+    "levelsReducedScore": {
+      "0": 20,
+      "1": 60,
+      "2": 85,
+      "3": 100
+    },
+    "riskImputation": {
+      "_catatan": "Dipakai bila level risiko kosong (2/3 baris sheet Data). Modus data bila ada sampel cukup; sisanya ASUMSI.",
+      "Kehandalan Pembangkit": {
+        "inherent": "Tinggi",
+        "residual": "Rendah"
+      },
+      "Anti Blackout": {
+        "inherent": "Tinggi",
+        "residual": "Rendah"
+      },
+      "Major OH & HGPP": {
+        "inherent": "Tinggi",
+        "residual": "Moderat"
+      },
+      "Regulasi": {
+        "inherent": "Tinggi",
+        "residual": "Rendah"
+      },
+      "Infrastruktur Sipil & Bangunan": {
+        "inherent": "Moderat",
+        "residual": "Rendah"
+      },
+      "Infrastruktur IT": {
+        "inherent": "Moderat",
+        "residual": "Rendah"
+      },
+      "Tools & Alat Berat": {
+        "inherent": "Moderat",
+        "residual": "Rendah"
+      },
+      "Replace": {
+        "inherent": "Moderat",
+        "residual": "Rendah"
+      },
+      "Keep and Improve": {
+        "inherent": "Moderat",
+        "residual": "Rendah"
+      },
+      "Keep": {
+        "inherent": "Rendah",
+        "residual": "Rendah"
+      },
+      "_default": {
+        "inherent": "Moderat",
+        "residual": "Rendah"
+      }
+    },
+    "clusters": {
+      "_catatan": "score = kepentingan kluster, usefulLifeYears = umur manfaat PV, exposureMultiplier = pengali EAL karena skala aset terdampak (Major OH/HGPP menyangkut 1 unit GT utuh, Anti Blackout menyangkut seluruh plant). Semuanya ASUMSI.",
+      "Anti Blackout": {
+        "score": 100,
+        "exposureMultiplier": 3,
+        "usefulLifeYears": 15
+      },
+      "Regulasi": {
+        "score": 100,
+        "exposureMultiplier": 1,
+        "usefulLifeYears": 10
+      },
+      "Kehandalan Pembangkit": {
+        "score": 90,
+        "exposureMultiplier": 1,
+        "usefulLifeYears": 12
+      },
+      "Major OH & HGPP": {
+        "score": 80,
+        "exposureMultiplier": 20,
+        "usefulLifeYears": 6
+      },
+      "Replace": {
+        "score": 70,
+        "exposureMultiplier": 1,
+        "usefulLifeYears": 15
+      },
+      "Keep and Improve": {
+        "score": 55,
+        "exposureMultiplier": 1,
+        "usefulLifeYears": 8
+      },
+      "Infrastruktur IT": {
+        "score": 45,
+        "exposureMultiplier": 1,
+        "usefulLifeYears": 5
+      },
+      "Keep": {
+        "score": 40,
+        "exposureMultiplier": 1,
+        "usefulLifeYears": 5
+      },
+      "Infrastruktur Sipil & Bangunan": {
+        "score": 40,
+        "exposureMultiplier": 1,
+        "usefulLifeYears": 20
+      },
+      "Tools & Alat Berat": {
+        "score": 35,
+        "exposureMultiplier": 1,
+        "usefulLifeYears": 10
+      },
+      "_default": {
+        "score": 50,
+        "exposureMultiplier": 1,
+        "usefulLifeYears": 10
+      }
+    },
+    "strategicCodes": {
+      "_catatan": "Kode P-/O- mengacu sheet Strategi. Kode A1, C4, D1-D5, E1, E8, A3 berasal dari linkage korporat sementara dan maknanya tidak ada di workbook, jadi dibiarkan netral (50) sampai Anda isi.",
+      "P-2.3": 90,
+      "P-2.1": 90,
+      "P-2.4": 70,
+      "O-1.1": 80,
+      "O-1.4": 75,
+      "P-2.2": 60,
+      "P-1.1": 60,
+      "P-3.2": 55,
+      "_default": 50
+    },
+    "basisInput": {
+      "Kepatuhan Regulasi": 100,
+      "Kajian Enjinering (FMEA, RCFA, ECP, LCM)": 90,
+      "Assesment Unit (RLA, RKU)": 85,
+      "Maintenance History Analysis (PM, PdM, CM)": 80,
+      "Manufacture Recommended": 75,
+      "Outage Management": 70,
+      "Aging (Life Cycle)": 65,
+      "Optimasi Inventory Control (strategic spare)": 55,
+      "Evaluasi Kebutuhan Sarana & Infrastruktur": 50,
+      "_default": 40
+    },
+    "tkdn": {
+      "Ya": 100,
+      "Tidak": 30,
+      "_default": 50
+    },
+    "status": {
+      "Lanjut": 100,
+      "On Progress": 100,
+      "Belum Dimulai": 50,
+      "Diskusi": 30,
+      "Ditunda": 20,
+      "_default": 50,
+      "_catatan": "Lanjut/On Progress diberi skor tinggi agar komitmen berjalan tidak terbengkalai."
+    }
+  },
+  "scales": {
+    "bcr": [
+      [
+        0,
+        0
+      ],
+      [
+        0.25,
+        15
+      ],
+      [
+        0.5,
+        30
+      ],
+      [
+        1,
+        50
+      ],
+      [
+        2,
+        70
+      ],
+      [
+        5,
+        90
+      ],
+      [
+        10,
+        100
+      ]
+    ],
+    "capitalIntensityMiliar": [
+      [
+        0.1,
+        100
+      ],
+      [
+        1,
+        85
+      ],
+      [
+        10,
+        60
+      ],
+      [
+        50,
+        35
+      ],
+      [
+        200,
+        15
+      ],
+      [
+        1000,
+        0
+      ]
+    ],
+    "timingYearOffset": [
+      [
+        0,
+        100
+      ],
+      [
+        1,
+        85
+      ],
+      [
+        2,
+        70
+      ],
+      [
+        3,
+        55
+      ],
+      [
+        4,
+        40
+      ],
+      [
+        5,
+        25
+      ],
+      [
+        6,
+        10
+      ]
+    ],
+    "leadTimeSlackMonths": [
+      [
+        0,
+        100
+      ],
+      [
+        6,
+        70
+      ],
+      [
+        18,
+        40
+      ],
+      [
+        36,
+        15
+      ]
+    ]
+  },
+  "criteria": [
+    {
+      "id": "inherentRisk",
+      "group": "risiko",
+      "weight": 20,
+      "label": "Level risiko inherent"
+    },
+    {
+      "id": "riskReduction",
+      "group": "risiko",
+      "weight": 15,
+      "label": "Penurunan risiko (inherent ke residual)"
+    },
+    {
+      "id": "clusterPriority",
+      "group": "strategis",
+      "weight": 8,
+      "label": "Kepentingan kluster program"
+    },
+    {
+      "id": "strategicAlignment",
+      "group": "strategis",
+      "weight": 7,
+      "label": "Keselarasan strategis RJPU"
+    },
+    {
+      "id": "basisInput",
+      "group": "strategis",
+      "weight": 5,
+      "label": "Kekuatan dasar input program"
+    },
+    {
+      "id": "bcr",
+      "group": "ekonomi",
+      "weight": 18,
+      "label": "Benefit-Cost Ratio (PV manfaat / PV biaya)"
+    },
+    {
+      "id": "capitalIntensity",
+      "group": "ekonomi",
+      "weight": 8,
+      "label": "Intensitas biaya (PV biaya, makin kecil makin baik)"
+    },
+    {
+      "id": "tkdn",
+      "group": "ekonomi",
+      "weight": 4,
+      "label": "Kandungan lokal (TKDN)"
+    },
+    {
+      "id": "timing",
+      "group": "waktu",
+      "weight": 8,
+      "label": "Urgensi tahun pelaksanaan"
+    },
+    {
+      "id": "leadTime",
+      "group": "waktu",
+      "weight": 4,
+      "label": "Kritis lead time pengadaan"
+    },
+    {
+      "id": "status",
+      "group": "waktu",
+      "weight": 3,
+      "label": "Status / komitmen berjalan"
+    }
+  ],
+  "groups": {
+    "risiko": "Risiko & Keandalan",
+    "strategis": "Strategis & Kebutuhan",
+    "ekonomi": "Ekonomi",
+    "waktu": "Waktu & Kesiapan"
+  },
+  "dataQuality": {
+    "penalty": {
+      "riskMissing": 0.12,
+      "hargaMissing": 0.12,
+      "tahunMissing": 0.06,
+      "clusterMissing": 0.04
+    },
+    "catatan": "finalScore = rawScore x (1 - jumlah penalti). Baris tanpa harga/tahun/risiko tetap diranking tapi diberi penanda."
+  },
+  "overrides": [
+    {
+      "id": "wajib_regulasi",
+      "label": "Wajib regulasi / K3",
+      "minScore": 70,
+      "any": [
+        {
+          "field": "cluster",
+          "equals": "Regulasi"
+        },
+        {
+          "field": "basis",
+          "equals": "Kepatuhan Regulasi"
+        },
+        {
+          "field": "sasaran",
+          "in": [
+            "Regulasi/Peraturan Pemerintah",
+            "Safety/K3 (HSE)"
+          ]
+        }
+      ]
+    }
+  ],
+  "tiers": [
+    {
+      "kode": "P1",
+      "nama": "Prioritas Utama",
+      "min": 78
+    },
+    {
+      "kode": "P2",
+      "nama": "Prioritas Tinggi",
+      "min": 62
+    },
+    {
+      "kode": "P3",
+      "nama": "Prioritas Sedang",
+      "min": 48
+    },
+    {
+      "kode": "P4",
+      "nama": "Prioritas Rendah",
+      "min": 0
+    }
+  ]
+}
