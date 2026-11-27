@@ -1,4 +1,3 @@
-// src/pages/Dashboard/KesimpulanRJPU.jsx
 import React, {
   useCallback,
   useEffect,
@@ -518,6 +517,79 @@ function downloadCsv(rows, model, options) {
     "text/csv;charset=utf-8;",
   );
 }
+// Filter regulasi mengikuti tiga penanda regulasi dalam model v2.
+// K3 tanpa penanda regulasi tetap tampil pada pilihan "Tanpa regulasi".
+const isRegulation = (r) =>
+  normalize(r.cluster) === "regulasi" ||
+  normalize(r.basis) === "kepatuhan regulasi" ||
+  normalize(r.sasaran) === "regulasi/peraturan pemerintah";
+const matchesRegulation = (r, filter) => {
+  if (filter === "without-regulation") return !isRegulation(r);
+  if (filter === "regulation-only") return isRegulation(r);
+  if (filter === "without-mandatory") return !r.mandatory && !isRegulation(r);
+  return true;
+};
+const initialSort = { key: "priority", direction: "asc" };
+const priorityOrder = { P1: 1, P2: 2, P3: 3, P4: 4 };
+const sortableColumns = [
+  { key: "rank", label: "Rank", first: "asc" },
+  { key: "program", label: "Program / Unit", first: "asc" },
+  { key: "source", label: "AI/AO", first: "asc" },
+  { key: "year", label: "Tahun", first: "asc" },
+  { key: "price", label: "Harga Total", first: "desc" },
+  { key: "score", label: "Skor Teknis", first: "desc" },
+  { key: "priority", label: "Prioritas", first: "asc" },
+  { key: null, label: "Detail" },
+];
+const sortValue = (r, key) => {
+  switch (key) {
+    case "rank":
+      return r.rank;
+    case "program":
+      return normalize(r.nama);
+    case "source":
+      return normalize(r.sumberAnggaran);
+    case "year":
+      return r.year;
+    case "price":
+      return r.nominalCost ?? r.priceRp;
+    case "score":
+      return r.finalScore;
+    case "priority":
+      return priorityOrder[r.tier] ?? null;
+    default:
+      return null;
+  }
+};
+const isMissingSortValue = (v) =>
+  v == null || v === "" || (typeof v === "number" && !Number.isFinite(v));
+function comparePrograms(a, b, { key, direction }) {
+  const av = sortValue(a, key),
+    bv = sortValue(b, key);
+  const am = isMissingSortValue(av),
+    bm = isMissingSortValue(bv);
+  // Nilai kosong selalu terakhir, baik ASC maupun DESC.
+  if (am !== bm) return am ? 1 : -1;
+  if (!am && !bm) {
+    const c =
+      typeof av === "number" && typeof bv === "number"
+        ? av - bv
+        : String(av).localeCompare(String(bv), "id", {
+            numeric: true,
+            sensitivity: "base",
+          });
+    if (c) return direction === "desc" ? -c : c;
+  }
+  // Skor terbesar dulu di dalam kelas prioritas; rank global sebagai tie-breaker.
+  if (key === "priority") {
+    const c = (b.finalScore ?? -1) - (a.finalScore ?? -1);
+    if (c) return c;
+  }
+  return (
+    (a.rank ?? Infinity) - (b.rank ?? Infinity) ||
+    String(a.id).localeCompare(String(b.id), "id", { numeric: true })
+  );
+}
 const initialFilters = {
   unit: "",
   source: "",
@@ -526,6 +598,7 @@ const initialFilters = {
   bidang: "",
   review: "",
   economic: "",
+  regulation: "",
 };
 const KesimpulanRJPU = ({ userRole }) => {
   const [model, setModel] = useState(null),
@@ -539,6 +612,7 @@ const KesimpulanRJPU = ({ userRole }) => {
     [importMessage, setImportMessage] = useState("");
   const [search, setSearch] = useState(""),
     [filters, setFilters] = useState(initialFilters),
+    [sort, setSort] = useState(initialSort),
     [page, setPage] = useState(1),
     [perPage, setPerPage] = useState(25),
     [detailKey, setDetailKey] = useState(null);
@@ -635,40 +709,43 @@ const KesimpulanRJPU = ({ userRole }) => {
   );
   const filtered = useMemo(
     () =>
-      rows.filter((r) => {
-        const q = normalize(search);
-        return (
-          (!q ||
-            normalize(
-              [
-                r.id,
-                r.nama,
-                r.bidang,
-                r.unit,
-                r.aset,
-                r.status,
-                r.cluster,
-              ].join(" "),
-            ).includes(q)) &&
-          (!filters.unit ||
-            r.units.some(
-              (u) => normalizeUnit(u) === normalizeUnit(filters.unit),
-            )) &&
-          (!filters.source ||
-            normalize(r.sumberAnggaran) === normalize(filters.source)) &&
-          (!filters.year || String(r.year ?? "") === filters.year) &&
-          (!filters.tier || r.tier === filters.tier) &&
-          (!filters.bidang || r.bidang === filters.bidang) &&
-          (!filters.review ||
-            (filters.review === "mandatory"
-              ? r.mandatory
-              : filters.review === "review"
-                ? r.needsReview
-                : !r.needsReview)) &&
-          (!filters.economic || r.economicState === filters.economic)
-        );
-      }),
-    [rows, search, filters],
+      rows
+        .filter((r) => {
+          const q = normalize(search);
+          return (
+            (!q ||
+              normalize(
+                [
+                  r.id,
+                  r.nama,
+                  r.bidang,
+                  r.unit,
+                  r.aset,
+                  r.status,
+                  r.cluster,
+                ].join(" "),
+              ).includes(q)) &&
+            (!filters.unit ||
+              r.units.some(
+                (u) => normalizeUnit(u) === normalizeUnit(filters.unit),
+              )) &&
+            (!filters.source ||
+              normalize(r.sumberAnggaran) === normalize(filters.source)) &&
+            (!filters.year || String(r.year ?? "") === filters.year) &&
+            (!filters.tier || r.tier === filters.tier) &&
+            (!filters.bidang || r.bidang === filters.bidang) &&
+            (!filters.review ||
+              (filters.review === "mandatory"
+                ? r.mandatory
+                : filters.review === "review"
+                  ? r.needsReview
+                  : !r.needsReview)) &&
+            (!filters.economic || r.economicState === filters.economic) &&
+            matchesRegulation(r, filters.regulation)
+          );
+        })
+        .sort((a, b) => comparePrograms(a, b, sort)),
+    [rows, search, filters, sort],
   );
   const summary = useMemo(() => summarize(filtered), [filtered]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / perPage)),
@@ -681,6 +758,19 @@ const KesimpulanRJPU = ({ userRole }) => {
   const closeDetail = useCallback(() => setDetailKey(null), []);
   const changeFilter = (key, value) => {
     setFilters((old) => ({ ...old, [key]: value }));
+    setPage(1);
+  };
+  const changeSort = (column) => {
+    if (!column.key) return;
+    setSort((old) => ({
+      key: column.key,
+      direction:
+        old.key === column.key
+          ? old.direction === "asc"
+            ? "desc"
+            : "asc"
+          : column.first,
+    }));
     setPage(1);
   };
   const changeSetting = (key, value) => {
@@ -1032,19 +1122,20 @@ const KesimpulanRJPU = ({ userRole }) => {
           <div>
             <h2 className="text-lg font-bold">Prioritas Pelaksanaan RJPU</h2>
             <p className="mt-1 text-xs text-slate-500">
-              P1 → P2 → P3 → P4, skor teknis tertinggi terlebih dahulu. REVIEW
-              tanpa rank.
+              Default P1 → P4, skor teknis tertinggi. Klik judul kolom untuk
+              mengurutkan; REVIEW tanpa rank.
             </p>
           </div>
           <button
             className={buttonClass}
             onClick={() => {
               setFilters(initialFilters);
+              setSort(initialSort);
               setSearch("");
               setPage(1);
             }}
           >
-            Reset filter
+            Reset filter & urutan
           </button>
         </div>
         {summary.mandatory > 0 && (
@@ -1078,7 +1169,7 @@ const KesimpulanRJPU = ({ userRole }) => {
             setPage(1);
           }}
         />
-        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-8">
           <Filter
             label="Unit"
             value={filters.unit}
@@ -1110,6 +1201,16 @@ const KesimpulanRJPU = ({ userRole }) => {
             options={optionValues(rows, "bidang")}
           />
           <Filter
+            label="Regulasi / K3"
+            value={filters.regulation}
+            onChange={(v) => changeFilter("regulation", v)}
+            options={[
+              { value: "without-regulation", label: "Tanpa regulasi" },
+              { value: "regulation-only", label: "Khusus regulasi" },
+              { value: "without-mandatory", label: "Tanpa regulasi & K3" },
+            ]}
+          />
+          <Filter
             label="Review"
             value={filters.review}
             onChange={(v) => changeFilter("review", v)}
@@ -1126,28 +1227,65 @@ const KesimpulanRJPU = ({ userRole }) => {
             options={["Data belum lengkap", "NPV ≥ 0", "NPV negatif"]}
           />
         </div>
+        {filters.regulation && (
+          <p className="mt-3 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+            {filters.regulation === "without-regulation"
+              ? "Program regulasi disembunyikan; program K3 nonregulasi tetap tampil."
+              : filters.regulation === "without-mandatory"
+                ? "Program wajib regulasi/K3 disembunyikan."
+                : "Menampilkan program dengan penanda regulasi."}{" "}
+            Filter hanya mengubah tampilan dan ekspor, bukan kewajiban
+            pelaksanaan.
+          </p>
+        )}
         <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-100 text-slate-700">
               <tr>
-                {[
-                  "Rank",
-                  "Program / Unit",
-                  "AI/AO",
-                  "Tahun",
-                  "Harga Total",
-                  "Skor Teknis ↓",
-                  "Prioritas",
-                  "Detail",
-                ].map((h) => (
-                  <th
-                    key={h}
-                    scope="col"
-                    className="whitespace-nowrap px-3 py-3 font-semibold"
-                  >
-                    {h}
-                  </th>
-                ))}
+                {sortableColumns.map((column) => {
+                  const active = column.key && sort.key === column.key;
+                  return (
+                    <th
+                      key={column.label}
+                      scope="col"
+                      aria-sort={
+                        column.key
+                          ? active
+                            ? sort.direction === "asc"
+                              ? "ascending"
+                              : "descending"
+                            : "none"
+                          : undefined
+                      }
+                      className="whitespace-nowrap px-3 py-3 font-semibold"
+                    >
+                      {column.key ? (
+                        <button
+                          type="button"
+                          onClick={() => changeSort(column)}
+                          title={`Urutkan ${column.label}`}
+                          className={`inline-flex items-center gap-1 rounded px-1 py-1 hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 ${active ? "text-sky-700" : ""}`}
+                        >
+                          {column.label}
+                          <span
+                            aria-hidden="true"
+                            className={
+                              active ? "text-sky-700" : "text-slate-400"
+                            }
+                          >
+                            {active
+                              ? sort.direction === "asc"
+                                ? "↑"
+                                : "↓"
+                              : "↕"}
+                          </span>
+                        </button>
+                      ) : (
+                        column.label
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -1261,8 +1399,9 @@ const KesimpulanRJPU = ({ userRole }) => {
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
           <span>
-            {filtered.length} dari {rows.length} program · rank global dalam
-            data akses Anda (P1–P4, skor tertinggi; REVIEW terakhir)
+            {filtered.length} dari {rows.length} program · Urutan:{" "}
+            {sortableColumns.find((c) => c.key === sort.key)?.label}{" "}
+            {sort.direction === "asc" ? "↑" : "↓"} · Rank tetap global
           </span>
           <div className="flex items-center gap-2">
             <select
