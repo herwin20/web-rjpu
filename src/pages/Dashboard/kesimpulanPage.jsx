@@ -27,7 +27,7 @@ import service, {
   normalizeUnit,
   summarize,
   ECON_FIELDS,
-} from "../../api/kesimpulanRJPUService";
+} from "../../api/kesimpulanService";
 
 const money = (v) =>
   v == null

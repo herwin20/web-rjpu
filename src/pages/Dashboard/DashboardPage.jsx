@@ -38,7 +38,7 @@ import NotificationPanel from "../components/NotificationPanel";
 import RjpuAnggaran from "./AnggaranPage";
 import TimelinePage from "./TimeLinePage";
 import LogoAwal from "../../assets/logo_awal.png";
-import KesimpulanRjpu from "./kesimpulanRJPUPage";
+import KesimpulanRjpu from "./kesimpulanPage";
 
 import {
   MENU_ITEMS,
