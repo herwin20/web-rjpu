@@ -336,6 +336,8 @@ const ProgramData = ({ userRole }) => {
     "UMUM",
     "MO",
     "IT",
+    "Gudang",
+    "Inventory",
   ];
   const kategoriOptions = ["Material", "Jasa", "Material & Jasa"];
   const tkdnOptions = ["Ya", "Tidak"];
